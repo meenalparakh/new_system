@@ -13,14 +13,19 @@ if __name__ == "__main__":
     clip = MyCLIP()
 
     print(clip.image_preprocess)
-    segs, info_dict = robot.get_segment_labels_and_embeddings(obs["colors"], obs["depths"], clip)
+    segs, info_dict = robot.get_segment_labels_and_embeddings(
+        obs["colors"], obs["depths"], clip
+    )
 
-    object_dicts = robot.get_segmented_pcd(obs["colors"], obs["depths"], segs, remove_floor_ht=1.0, label_infos=info_dict)
+    object_dicts = robot.get_segmented_pcd(
+        obs["colors"],
+        obs["depths"],
+        segs,
+        remove_floor_ht=1.0,
+        label_infos=info_dict,
+        visualization=True,
+    )
 
     description, new_dcts = robot.get_scene_description(object_dicts)
     print_object_dicts(new_dcts)
     print(description)
-
-    
-
-
