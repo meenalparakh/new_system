@@ -5,10 +5,8 @@ import numpy as np
 from scipy.spatial.transform import Rotation as R
 # import sys
 # import matplotlib.pyplot as plt
-from detectron2.structures import BoxMode
 # from sklearn.cluster import DBSCAN, KMeans
 import open3d
-import pycocotools
 import os
 # from detectron2.structures import BoxMode
 import pickle
@@ -111,6 +109,10 @@ def get_dict(id, projected_images_dir,
                 segments_save_dir,
                 object_category,
                 flag):
+    from detectron2.structures import BoxMode
+    import pycocotools
+
+
     d = {
         'file_name': os.path.join(projected_images_dir, colormap_fname),
         'mask_filename': os.path.join(masks_dir, 'labels_' + colormap_fname),

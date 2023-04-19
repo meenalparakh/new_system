@@ -160,3 +160,5 @@ seaborn
 imageio
 scikit-image
 pybullet
+meshcat
+pyrealsense2

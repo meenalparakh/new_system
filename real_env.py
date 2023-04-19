@@ -2,12 +2,12 @@ import os
 import numpy as np
 import open3d
 from robot_env import MyRobot
+from visualize_pcd import VizServer 
 from data_collection.utils.data_collection_utils import read_all, get_scale, rescale_extrinsics, transform_configs
 
 
 DATA_DIR = "../data/scene_data/"
 
-def preprocess_pcd(pcd):
 
 
 class Camera:
@@ -38,7 +38,7 @@ class RealRobot(MyRobot):
         self.scene_dir = scene_dir
 
     def get_obs(self):
-        colors, depths, configs, _ = read_all(self.scene_dir, skip_image=20)
+        colors, depths, configs, _ = read_all(self.scene_dir, skip_image=40)
         print("Number of configs", len(configs), len(depths), len(colors))
         scale = get_scale(self.scene_dir, depths, configs)
         configs = rescale_extrinsics(configs, scale)
@@ -62,6 +62,8 @@ class RealRobot(MyRobot):
         # ////////////////////////////////////////////////////////////////
         # running object detection models 
         # ////////////////////////////////////////////////////////////////
+
+        for 
 
         results_fname = os.path.join(scene_dir, 'detic_results', 'predictions_summary.pkl')
         if not os.path.exists(results_fname) or True:
@@ -115,15 +117,22 @@ class RealRobot(MyRobot):
     
 if __name__ == "__main__":
 
-    scene_dir = os.path.join(DATA_DIR, "20221030_0540")
+    scene_dir = os.path.join(DATA_DIR, "20221010_1759")
     robot = RealRobot(gui=False, scene_dir=scene_dir)
     obs = robot.get_obs()
 
     combined_pts, combined_rgb = robot.get_combined_pcd(obs["colors"], obs["depths"])
-    pcd = open3d.geometry.PointCloud(open3d.utility.Vector3dVector(combined_pts))
-    pcd.colors = open3d.utility.Vector3dVector(combined_rgb/255.0)
 
-    # open3d.visualization.draw_geometries([pcd])
-    open3d.io.write_point_cloud("combined_pcd.ply", pcd)
+    viz = VizServer()
+    viz.view_pcd(combined_pts, combined_rgb)
+
+
+    ###################### open3d visualization
+
+    # pcd = open3d.geometry.PointCloud(open3d.utility.Vector3dVector(combined_pts))
+    # pcd.colors = open3d.utility.Vector3dVector(combined_rgb/255.0)
+
+    # # open3d.visualization.draw_geometries([pcd])
+    # open3d.io.write_point_cloud("combined_pcd.ply", pcd)
 
     

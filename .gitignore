@@ -130,3 +130,4 @@ dmypy.json
 system_env
 .DS_Store
 airobot
+colmap

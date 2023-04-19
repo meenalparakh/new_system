@@ -1,7 +1,7 @@
-from realsense_utils.simple_multicam import MultiRealsenseLocal
 import os
 import pyrealsense2 as rs
 from realsense_utils.realsense import RealsenseLocal, enable_devices
+from realsense_utils.simple_multicam import MultiRealsenseLocal
 
 CALIBRATION_DIR = "realsense_utils/camera_calibration_files"
 
