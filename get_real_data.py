@@ -1,9 +1,18 @@
+import open3d
 import os
+import numpy as np
 import pyrealsense2 as rs
 from realsense_utils.realsense import RealsenseLocal, enable_devices
 from realsense_utils.simple_multicam import MultiRealsenseLocal
-
+import copy
 CALIBRATION_DIR = "realsense_utils/camera_calibration_files"
+
+
+def transform_pcd(pcd, transform):
+    if pcd.shape[1] != 4:
+        pcd = np.concatenate((pcd, np.ones((pcd.shape[0], 1))), axis=1)
+    pcd_new = np.matmul(transform, pcd.T)[:-1, :].T
+    return pcd_new
 
 class Camera:
 
@@ -21,7 +30,7 @@ class Camera:
 
         prefix = 'cam_'
         camera_names = [f'{prefix}{i}' for i in range(len(serials))]
-        cam_index = [int(idx) for idx in self.cam_index]
+        cam_index = [int(idx) for idx in self.cam_idx]
         cam_list = [camera_names[int(idx)] for idx in cam_index]        
 
         calib_dir = CALIBRATION_DIR
@@ -65,7 +74,7 @@ class Camera:
 
             pcd_cam = cam.get_pcd(in_world=False, filter_depth=False, rgb_image=rgb, depth_image=depth_valid)[0]
             pcd_cam_img = pcd_cam.reshape(depth.shape[0], depth.shape[1], 3)
-            pcd_world = util.transform_pcd(pcd_cam, cam_pose_world)
+            pcd_world = transform_pcd(pcd_cam, cam_pose_world)
             pcd_world_img = pcd_world.reshape(depth.shape[0], depth.shape[1], 3)
             pcd_dict = {
                 'world': pcd_world,
@@ -86,4 +95,5 @@ if __name__ == "__main__":
     cameras = Camera(cam_idx=[0, 1, 2, 3])
     pcd = cameras.get_real_pcd()
 
-    
+    pointcloud = open3d.geometry.PointCloud(open3d.utility.Vector3dVector(pcd))
+    open3d.io.write_point_cloud("check.ply", pointcloud)
