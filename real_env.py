@@ -5,8 +5,31 @@ from robot_env import MyRobot
 from visualize_pcd import VizServer 
 from data_collection.utils.data_collection_utils import read_all, get_scale, rescale_extrinsics, transform_configs
 
+import subprocess
 
 DATA_DIR = "../data/scene_data/"
+
+def get_image_labels_and_masks(images, depths):
+    ################################################################################################
+
+    labels "./image_labels"
+
+    fpaths = []
+    for i, rgb in enumerate(images):
+        p = os.path.join(labels, "images", f'{i}.png')
+        cv2.imwrite(p, rgb)
+        fpaths.append(p)
+
+
+    results_fname = os.path.join(labels, 'predictions_summary.pkl')
+    data_lst_fname = "data_lst_real.pkl"
+    data_lst = [{"file_name": config["fname"]} for config in configs]
+
+    with open(os.path.join(labels, data_lst_fname), 'wb') as f:
+        pickle.dump(data_lst, f)
+            
+    subprocess.run(["./run_detect_grasp_scripts.sh", "detect", os.path.abspath(scene_dir), str(3), 
+                        data_lst_fname])
 
 
 
@@ -62,8 +85,6 @@ class RealRobot(MyRobot):
         # ////////////////////////////////////////////////////////////////
         # running object detection models 
         # ////////////////////////////////////////////////////////////////
-
-        for 
 
         results_fname = os.path.join(scene_dir, 'detic_results', 'predictions_summary.pkl')
         if not os.path.exists(results_fname) or True:

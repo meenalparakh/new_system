@@ -14,11 +14,10 @@ class Camera:
 
     def setup_cams(self):
         serials = [
-            '143122065292',
-            '840412060551',
-            '215122255998',
-            '843112073228'
-        ]
+            '143122065292', # back right
+            '843112073228', # front right bottom
+            '215122255998', # fron right top
+            '840412060551'] # side
 
         prefix = 'cam_'
         camera_names = [f'{prefix}{i}' for i in range(len(serials))]
@@ -87,3 +86,4 @@ if __name__ == "__main__":
     cameras = Camera(cam_idx=[0, 1, 2, 3])
     pcd = cameras.get_real_pcd()
 
+    

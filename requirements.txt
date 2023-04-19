@@ -162,3 +162,4 @@ scikit-image
 pybullet
 meshcat
 pyrealsense2
+pybind11
