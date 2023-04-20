@@ -17,3 +17,24 @@ class VizServer():
 
     def close(self):
         self.mc_vis.close()
+
+
+import open3d
+import argparse
+import numpy as np
+
+if __name__ == "__main__":
+    parser = argparse.ArgumentParser()
+    parser.add_argument("-f", "--fname")
+
+    args = parser.parse_args()
+    fname = args.fname
+    pcd = open3d.io.read_point_cloud(fname)
+
+    pts = np.asarray(pcd.points)
+
+    vis = VizServer()
+    vis.view_pcd(pts)
+
+
+    # open3d.visualization.draw_geometries([pcd])

@@ -4,7 +4,7 @@ import open3d
 from robot_env import MyRobot
 from visualize_pcd import VizServer 
 from data_collection.utils.data_collection_utils import read_all, get_scale, rescale_extrinsics, transform_configs
-
+import pickle
 import subprocess
 
 DATA_DIR = "../data/scene_data/"
@@ -12,7 +12,7 @@ DATA_DIR = "../data/scene_data/"
 def get_image_labels_and_masks(images, depths):
     ################################################################################################
 
-    labels "./image_labels"
+    labels = "./image_labels"
 
     fpaths = []
     for i, rgb in enumerate(images):
@@ -60,21 +60,26 @@ class RealRobot(MyRobot):
         super().__init__(gui)
         self.scene_dir = scene_dir
 
-    def get_obs(self):
-        colors, depths, configs, _ = read_all(self.scene_dir, skip_image=40)
-        print("Number of configs", len(configs), len(depths), len(colors))
-        scale = get_scale(self.scene_dir, depths, configs)
-        configs = rescale_extrinsics(configs, scale)
-        self.cams = []
+    def get_obs(self, custom=False):
+        if custom:
+            colors, depths, configs, _ = read_all(self.scene_dir, skip_image=40)
+            print("Number of configs", len(configs), len(depths), len(colors))
+            scale = get_scale(self.scene_dir, depths, configs)
+            configs = rescale_extrinsics(configs, scale)
+            self.cams = []
 
-        for idx, conf in enumerate(configs):
-            H, W = colors[idx].shape[:2]
-            cam = Camera(cam_extr=conf["extrinsics"], cam_intr=conf["intrinsics"], H=H, W=W)
-            self.cams.append(cam)
+            for idx, conf in enumerate(configs):
+                H, W = colors[idx].shape[:2]
+                cam = Camera(cam_extr=conf["extrinsics"], cam_intr=conf["intrinsics"], H=H, W=W)
+                self.cams.append(cam)
 
-        print("Number of images", len(colors))
+            print("Number of images", len(colors))
 
-        return {"colors": colors, "depths": depths, "configs": configs}
+            return {"colors": colors, "depths": depths, "configs": configs}
+        else:
+            with open('obs.pkl', 'rb') as f:
+                obs = pickle.load(f)
+            return obs
 
     def get_segment_labels_and_embeddings(self, colors, depths, configs, clip_):
         # for each rgb image, returns a segmented image, and
