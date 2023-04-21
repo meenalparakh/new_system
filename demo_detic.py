@@ -23,7 +23,7 @@ Args = namedtuple("Args", ["vocabulary", "custom_vocabulary"])
 
 def setup_cfg():
     cfg = get_cfg()
-    cfg.MODEL.DEVICE="cpu"
+    # cfg.MODEL.DEVICE="cpu"
     add_centernet_config(cfg)
     add_detic_config(cfg)
     cfg.merge_from_file("configs/Detic_LCOCOI21k_CLIP_SwinB_896b32_4x_ft4x_max-size.yaml")
@@ -67,15 +67,13 @@ if __name__ == "__main__":
     
     rgbs = []
 
-    fnames = os.listdir(args.image_dir)
-    rgbs = []
-    for f in fnames:
-        if f.endswith(".png"):
-            rgb = cv2.imread(os.path.join(args.image_dir, f))
-            rgbs.append(rgb)
-
     with open(os.path.join(args.image_dir, "args.pkl"), 'rb') as f:
-        vocab_args = pickle.load(f)
+        image_fnames, vocab_args = pickle.load(f)
+
+    rgbs = []
+    for f in image_fnames:
+        rgb = cv2.imread(os.path.join(args.image_dir, f))
+        rgbs.append(rgb)
 
     preds_lst, names = get_predictions(rgbs, vocab_args)
 

@@ -4,31 +4,36 @@ import open3d
 from robot_env import MyRobot
 from visualize_pcd import VizServer
 
+import matplotlib.pyplot as plt
+
 import pickle
 import subprocess
 import cv2
 # from get_real_data import RealSenseCameras
-import subprocess
 
 DATA_DIR = "../data/scene_data/"
 
+import torch
 subprocess.run(['cp', 'demo_detic.py', 'Detic/'])
 from collections import namedtuple
 Args = namedtuple("Args", ["vocabulary", "custom_vocabulary"])
 
 def get_detic_predictions(images, vocabulary="lvis", custom_vocabulary=""):
 
-    # args = Args(vocabulary=vocabulary, custom_vocabulary=custom_vocabulary)
-    # image_dir = "current_images"
-    # os.makedirs(image_dir, exist_ok=True)
+    args = Args(vocabulary=vocabulary, custom_vocabulary=custom_vocabulary)
+    image_dir = "current_images"
+    os.makedirs(image_dir, exist_ok=True)
 
-    # for idx, img in enumerate(images):
-    #     cv2.imwrite(os.path.join(image_dir, f"{idx}.png"), img)
+    image_fnames = []
+    for idx, img in enumerate(images):
+        fname = os.path.join(image_dir, f"{idx}.png") 
+        cv2.imwrite(fname, img)
+        image_fnames.append(f"{idx}.png")
 
-    # with open(os.path.join(image_dir, "args.pkl"), 'wb') as f:
-    #     pickle.dump(args, f)
-            
-    # subprocess.run(["./run_detect_grasp_scripts.sh", "detect", os.path.abspath(image_dir)])
+    with open(os.path.join(image_dir, "args.pkl"), 'wb') as f:
+        pickle.dump([image_fnames, args], f)
+
+    subprocess.run(["./run_detect_grasp_scripts.sh", "detect", os.path.abspath(image_dir)])
 
     with open("./Detic/predictions_summary.pkl", 'rb') as f:
         pred_lst, names = pickle.load(f)
@@ -52,14 +57,34 @@ def get_bb_labels(pred, names):
     
     instances = pred["instances"]
     pred_masks = instances.pred_masks
-    pred_boxes = instances.pred_boxes.tensor.numpy()
+    pred_boxes = instances.pred_boxes.tensor.cpu().numpy()
     pred_classes = instances.pred_classes 
     pred_scores = instances.scores
     pred_labels = [names[idx] for idx in pred_classes]
 
     return pred_boxes, pred_labels
 
-def get_segmentation_mask(predictor, image, bbs):
+def show_mask(mask, ax, random_color=False):
+    if random_color:
+        color = np.concatenate([np.random.random(3), np.array([0.6])], axis=0)
+    else:
+        color = np.array([30/255, 144/255, 255/255, 0.6])
+    h, w = mask.shape[-2:]
+    mask_image = mask.reshape(h, w, 1) * color.reshape(1, 1, -1)
+    ax.imshow(mask_image)
+    
+def show_points(coords, labels, ax, marker_size=375):
+    pos_points = coords[labels==1]
+    neg_points = coords[labels==0]
+    ax.scatter(pos_points[:, 0], pos_points[:, 1], color='green', marker='*', s=marker_size, edgecolor='white', linewidth=1.25)
+    ax.scatter(neg_points[:, 0], neg_points[:, 1], color='red', marker='*', s=marker_size, edgecolor='white', linewidth=1.25)   
+    
+def show_box(box, ax):
+    x0, y0 = box[0], box[1]
+    w, h = box[2] - box[0], box[3] - box[1]
+    ax.add_patch(plt.Rectangle((x0, y0), w, h, edgecolor='green', facecolor=(0,0,0,0), lw=2))    
+
+def get_segmentation_mask(predictor, image, bbs, prefix=0):
     
     '''
     for each bb in the image, get the segmentation mask, using SAM
@@ -73,15 +98,25 @@ def get_segmentation_mask(predictor, image, bbs):
     # pass
     predictor.set_image(image, image_format="RGB")
 
+    sam_predictions_dir = "sam_predictions"
+    os.makedirs(sam_predictions_dir, exist_ok=True)
+
     results = []
     for j in range(len(bbs)):
-        b = bbs[j].numpy()
         masks, scores, logits = predictor.predict(
                 box=bbs[j],
                 multimask_output=False
         )
 
         results.append(masks[0])
+
+        plt.figure(figsize=(10, 10))
+        plt.imshow(image)
+        show_mask(masks[0], plt.gca())
+        show_box(bbs[j], plt.gca())
+        plt.axis('off')
+
+        plt.savefig(sam_predictions_dir + f"/{prefix}_{j}.png")
 
     return results
 
@@ -135,7 +170,8 @@ class RealRobot(MyRobot):
         from segment_anything import sam_model_registry, SamPredictor
         sam_checkpoint = "sam_model/sam_vit_h_4b8939.pth"
         model_type = "vit_h"
-        device = "gpu"
+        device = "cuda" if torch.cuda.is_available() else "cpu"
+
         sam = sam_model_registry[model_type](checkpoint=sam_checkpoint)
         sam.to(device=device)
         self.sam_predictor = SamPredictor(sam)
@@ -202,14 +238,15 @@ class RealRobot(MyRobot):
 if __name__ == "__main__":
     # scene_dir = os.path.join(DATA_DIR, "20221010_1759")
 
-    robot = RealRobot(gui=False, scene_dir=None)
+    robot = RealRobot(gui=False, scene_dir=None, sam=True)
     obs = robot.get_obs()
 
     pred_lst, names = get_detic_predictions(obs["colors"], vocabulary="custom", custom_vocabulary="mug,tray")
 
     for idx, rgb in enumerate(obs["colors"]):
+        print("Obtaining segmentation mask")
         pred_boxes, pred_labels = get_bb_labels(pred_lst[idx], names)
-        masks = get_segmentation_mask(robot.sam_predictor, rgb, pred_boxes)
+        masks = get_segmentation_mask(robot.sam_predictor, rgb, pred_boxes, prefix=idx)
         
 
     ###################### combined pcd visualization 

@@ -12,6 +12,7 @@ pip install -r requirements.txt
 
 cp ../demo_detic.py demo_detic.py
 
+cd ../
 pip install 'git+https://github.com/facebookresearch/segment-anything.git'
 mkdir sam_model
 cd sam_model

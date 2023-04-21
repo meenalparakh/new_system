@@ -30,7 +30,7 @@ def show_box(box, ax):
 sam_checkpoint = "sam_model/sam_vit_h_4b8939.pth"
 model_type = "vit_h"
 # device = "cuda"
-device = "cpu"
+device = "cuda" if torch.cuda.is_available() else "cpu"
 
 sam = sam_model_registry[model_type](checkpoint=sam_checkpoint)
 sam.to(device=device)
@@ -53,7 +53,7 @@ for fname in image_fnames:
         predictor.set_image(im, image_format='RGB')
 
         idx = int(fname[0])
-        bbs = pred_lst[idx]["instances"].pred_boxes.tensor.numpy()
+        bbs = pred_lst[idx]["instances"].pred_boxes.tensor.cpu().numpy()
 
         for j in range(len(bbs)):
             masks, scores, logits = predictor.predict(
@@ -67,5 +67,5 @@ for fname in image_fnames:
             show_box(bbs[j], plt.gca())
             plt.axis('off')
 
-            plt.save(sam_predictions_dir + f"/{fname}_{j}.png")
+            plt.savefig(sam_predictions_dir + f"/{fname}_{j}.png")
 
