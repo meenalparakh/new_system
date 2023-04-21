@@ -143,16 +143,24 @@ class MyRobot(Robot):
             focus_pt=[0.5, 0.0, 1.0], dist=1, yaw=90, pitch=-45, roll=0
         )
 
-    def get_combined_pcd(self, colors, depths):
+    def get_combined_pcd(self, colors, depths, idx=None):
         pcd_pts = []
         pcd_rgb = []
-        for color, depth, cam in zip(colors, depths, self.cams):
-            cam_extr = cam.get_cam_ext()
-            pts, rgb = self.get_pcd(
-                cam_ext_mat=cam_extr, rgb_image=color, depth_image=depth, cam=cam
-            )
-            pcd_pts.append(pts)
-            pcd_rgb.append(rgb)
+        chosen_cams = self.cams
+
+        if idx is None:
+            idx = list(range(len(colors)))
+
+        count = 0
+        for color, depth, cam in zip(colors, depths, chosen_cams):
+            if count in idx:
+                cam_extr = cam.get_cam_ext()
+                pts, rgb = self.get_pcd(
+                    cam_ext_mat=cam_extr, rgb_image=color, depth_image=depth, cam=cam
+                )
+                pcd_pts.append(pts)
+                pcd_rgb.append(rgb)
+            count += 1
 
         return np.concatenate(pcd_pts, axis=0), np.concatenate(pcd_rgb, axis=0)
 
@@ -214,6 +222,7 @@ class MyRobot(Robot):
             pts_in_world = np.dot(cam_ext_mat, pts_in_cam)
             pcd_pts = pts_in_world[:3, :].T
             pcd_rgb = rgb
+
             return pcd_pts, pcd_rgb
 
     def get_segment_labels_and_embeddings(self, colors, depths, clip_):
@@ -269,6 +278,7 @@ class MyRobot(Robot):
         remove_floor_ht=0.90,
         label_infos=None,
         visualization=False,
+        process_pcd_fn=None
     ):
         pcd_pts = []
         pcd_rgb = []
@@ -276,21 +286,27 @@ class MyRobot(Robot):
         for color, depth, segment, cam in zip(colors, depths, segs, self.cams):
             cam_extr = cam.get_cam_ext()
             pts, rgb = self.get_pcd(
-                cam_ext_mat=cam_extr, rgb_image=color, depth_image=depth, cam=cam
+                cam_ext_mat=cam_extr, rgb_image=color, depth_image=depth, cam=cam,
             )
 
             _, seg = self.get_pcd(
                 cam_ext_mat=cam_extr,
                 rgb_image=np.repeat(segment[..., None], repeats=3, axis=2),
                 depth_image=depth,
-                cam=cam,
+                cam=cam
             )
 
-            valid = pts[:, 2] > remove_floor_ht
+            if process_pcd_fn is not None:
+                pts, rgb, seg = process_pcd_fn(pts, rgb, seg)
 
-            pcd_pts.append(pts[valid])
-            pcd_rgb.append(rgb[valid])
-            pcd_seg.append(seg[valid])
+            pcd_pts.append(pts)
+            pcd_rgb.append(rgb)
+            pcd_seg.append(seg)
+
+            # valid = pts[:, 2] > remove_floor_ht
+            # pcd_pts.append(pts[valid])
+            # pcd_rgb.append(rgb[valid])
+            # pcd_seg.append(seg[valid])
 
         # //////////////////////////////////////////////////////////////////////////////
         # Collective visualization of segments under consideration

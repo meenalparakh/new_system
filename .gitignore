@@ -131,3 +131,7 @@ system_env
 .DS_Store
 airobot
 colmap
+current_images
+Detic
+obs.pkl
+

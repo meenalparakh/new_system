@@ -2,8 +2,8 @@
 
 if [ "$1" = "detect" ]
 then
-    cd ../Detic
-    python demo.py --scene-dir=$2 --num-views=$3 --data-lst-fname=$4
+    cd Detic
+    python demo_detic.py --image-dir=$2 
 elif [ "$1" = "grasp" ]
 then
     cd ../grasping

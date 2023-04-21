@@ -24,6 +24,7 @@ if __name__ == "__main__":
         remove_floor_ht=1.0,
         label_infos=info_dict,
         visualization=True,
+        # process_pcd_fn=robot.crop_pcd
     )
 
     description, new_dcts = robot.get_scene_description(object_dicts)
