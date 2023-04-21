@@ -73,9 +73,45 @@ if __name__ == "__main__":
     chat_module = ChatGPTModule()
     chat_module.start_session("test_run")
 
-    chat_module.chat(prompt="How to place a bowl containing food into a dishwasher?", context="Your job is to tell how to accomplish some task.")
+    ## // Example chats /////////////////////////////////////////////////////////////////////////////////////// 
+    # chat_module.chat(prompt="How to place a bowl containing food into a dishwasher?", context="Your job is to tell how to accomplish some task.")
     # chat_module.chat(prompt="Nice job! Next tell me where to place the bowl after it has been washed. I see a bin and a rack.")
     # chat_module.chat(prompt="write code for drawing a circle on a paper. You can use numpy and math libraries. The function you should make use of is `move(position)`, where `position` is a 2d array and moves the pencil to `position` on the paper.")
     # ////////////////////////////////////////////////////////////////////////////////////////////////////
 
+    ## // Example with planner /////////////////////////////////////////////////////////////////////////////////////// 
+    from prompt_manager import get_plan
+
+    primitives_lst = "`find(object)`,`pick_bowl`, `place_bowl`"
+    primitives_description = """
+```
+def find(object):
+	# finds the relevant objects in the environment
+	# returns the [x, y, z] location of the object.
+
+def pick(position):
+	#  picks up the bowl located at position
+	# position: [x, y, z] coordinate of the bowl
+
+def place(position):
+	#  places the bowl at a location given by position, [x, y, z]
+	# position: [x, y, z] coordinate for desired place location
+
+def learn_skill(skill_name, skill_inputs): 
+	# Arguments:
+	# skill_name: a short name for the skill to learn
+	# skill_inputs: the arguments that the new skill to be learned should take
+
+	# Returns:
+	# the function skill_name that can perform the skill given by “skill_name” and takes as input the skill_inputs.
+```
+    """
+
+    task_prompt = "place the mug into the tray"
+    description = "On the table lies a tray and a mug. At the right of all the objects on the table lies the tray. Further away to the left of the tray, the mug has been placed."
+    task_name, code_rectified = get_plan(description, task_prompt, chat_module.chat, "place_mug", primitives_lst, primitives_description)
+
+    print(" FINAL ANSWER >>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>")
+    print(task_name)
+    print(code_rectified)
 

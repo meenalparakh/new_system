@@ -4,23 +4,35 @@ from real_env import RealRobot
 from visualize_pcd import VizServer
 import distinctipy as dp
 import numpy as np
+from prompt_manager import get_plan, execute_plan
+from gpt_module import ChatGPTModule
+
 
 if __name__ == "__main__":
-    robot = RealRobot(gui=False, scene_dir=None, realsense_cams=False, sam=True)
+    robot = RealRobot(
+        gui=False,
+        scene_dir=None,
+        realsense_cams=True,
+        sam=True,
+        clip=True,
+        cam_idx=[0, 1, 3],
+    )
 
-    obs = robot.get_obs()
-
+    obs = robot.get_obs(source="realsense")
 
     ###################### combined pcd visualization
-    combined_pts, combined_rgb = robot.get_combined_pcd(obs["colors"], obs["depths"], idx=[0, 1, 3])
+    combined_pts, combined_rgb = robot.get_combined_pcd(
+        obs["colors"], obs["depths"], idx=[0, 1, 3]
+    )
     viz = VizServer()
     # viz.view_pcd(combined_pts, combined_rgb)
 
-    clip = MyCLIP()
-
-    print(clip.image_preprocess)
     segs, info_dict = robot.get_segment_labels_and_embeddings(
-        obs["colors"], obs["depths"], clip, vocabulary="custom", custom_vocabulary="mug,tray"
+        obs["colors"],
+        obs["depths"],
+        robot.clip,
+        vocabulary="custom",
+        custom_vocabulary="mug,tray",
     )
 
     object_dicts = robot.get_segmented_pcd(
@@ -30,8 +42,14 @@ if __name__ == "__main__":
         remove_floor_ht=1.0,
         label_infos=info_dict,
         visualization=True,
-        process_pcd_fn=robot.crop_pcd
+        process_pcd_fn=robot.crop_pcd,
     )
+
+    description, new_dcts = robot.get_scene_description(object_dicts)
+
+    robot.object_dicts = new_dcts
+    print_object_dicts(new_dcts)
+    print(description)
 
     # //////////////////////////////////////////////////////////////////////////////
     # Visualization of point clouds
@@ -48,16 +66,26 @@ if __name__ == "__main__":
         viz.view_pcd(pcd, color, f"{idx}_{label}")
         pcds.append(pcd)
         colors.append(color)
-        
 
     pcds = np.vstack(pcds); colors = np.vstack(colors)
     viz.view_pcd(pcds, colors)
 
     # //////////////////////////////////////////////////////////////////////////////
+    # LLM Planning
+    # //////////////////////////////////////////////////////////////////////////////
 
+    # robot.get_primitives()
+    # task_name = "place_mug"
+    # task_prompt = "place the mug into the tray"
 
-    description, new_dcts = robot.get_scene_description(object_dicts)
-    print_object_dicts(new_dcts)
-    print(description)
+    # chat_module = ChatGPTModule()
+    # chat_module.start_session("test_run")
+    # task_name, code_rectified = get_plan(description, task_prompt, chat_module.chat, task_name, robot.primitives_lst, robot.primitives_description)
 
+    # print(" FINAL ANSWER >>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>")
+    # print("TASK:", task_name)
+    # print(code_rectified)
 
+    # final_code = code_rectified.replace("`", "")
+
+    # execute_plan(robot, task_name, final_code)

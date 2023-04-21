@@ -32,7 +32,13 @@ def get_detic_predictions(images, vocabulary="lvis", custom_vocabulary=""):
     print(image_fnames)
 
     subprocess.run(
-        ["./run_detect_grasp_scripts.sh", "detect", os.path.abspath(image_dir), vocabulary, custom_vocabulary]
+        [
+            "./run_detect_grasp_scripts.sh",
+            "detect",
+            os.path.abspath(image_dir),
+            vocabulary,
+            custom_vocabulary,
+        ]
     )
 
     with open("./Detic/predictions_summary.pkl", "rb") as f:
@@ -137,10 +143,10 @@ def get_segmentation_mask(predictor, image, bbs, labels, prefix=0):
         r1, c1, r2, c2 = bbs[j]
         margin = 1
         r1 = max(int(r1 - margin), 0)
-        r2 = min(int(r2 + margin), H-1)
+        r2 = min(int(r2 + margin), H - 1)
         c1 = max(int(c1 - margin), 0)
-        c2 = min(int(c2 + margin), W-1)
-        
+        c2 = min(int(c2 + margin), W - 1)
+
         print("crop dims", r1, c1, r2, c2)
         crop = image[r1 : r2 + 1, c1 : c2 + 1, :]
 
@@ -200,7 +206,9 @@ class Camera:
 
 
 class RealRobot(MyRobot):
-    def __init__(self, gui=False, scene_dir=None, realsense_cams=False, sam=False):
+    def __init__(
+        self, gui=False, scene_dir=None, realsense_cams=False, sam=False, clip=False, cam_idx=[0, 1, 2, 3]
+    ):
         super().__init__(gui)
         self.scene_dir = scene_dir
         self.table_bounds = np.array([[0.15, 0.50], [-0.5, 0.5], [0.03, 1.0]])
@@ -208,12 +216,15 @@ class RealRobot(MyRobot):
         self.realsense_cams = None
         if realsense_cams:
             from get_real_data import RealSenseCameras
-
-            self.realsense_cams = RealSenseCameras([0, 1, 2, 3])
+            self.realsense_cams = RealSenseCameras(cam_idx)
 
         self.sam_predictor = None
         if sam:
             self.set_sam()
+        if clip:
+            from clip_model import MyCLIP
+
+            self.clip = MyCLIP()
 
     def set_sam(self):
         from segment_anything import sam_model_registry, SamPredictor
@@ -264,6 +275,8 @@ class RealRobot(MyRobot):
     def get_segment_labels_and_embeddings(
         self, colors, depths, clip_, vocabulary="lvis", custom_vocabulary=""
     ):
+        if clip_ is None:
+            clip_ = self.clip
         pred_lst, names = get_detic_predictions(
             colors, vocabulary=vocabulary, custom_vocabulary=custom_vocabulary
         )
@@ -301,11 +314,129 @@ class RealRobot(MyRobot):
 
         return pts, rgb, segs
 
+    def find(self, object_name, object_description):
+        print(f"finding object: {object_name}, description: {object_description}")
+
+        obj_ids = list(self.object_dicts.keys())
+
+        txts = []
+        n = len(obj_ids)
+        for oid in obj_ids:
+            name = self.object_dicts[oid]["used_name"]
+            descr = self.object_dicts[oid]["desc"]
+            txts.append(name + " that " + descr)
+
+        prompt = object_name + " described by " + object_description
+        txts.append(prompt)
+
+        embeddings = self.clip.get_text_embeddings(txts)
+
+        possibilities = embeddings[:n]
+        mat1 = embeddings[n:]
+
+        prob = mat1 @ possibilities.T
+        idx = np.argmax(prob[0])
+
+        print("Chosen object: ", obj_ids[idx])
+        return obj_ids[idx]
+
+    def pick(self, obj_id):
+        print(f"Picking object {obj_id}")
+
+    def place(self, obj_id, position):
+        print(f"Placing object {obj_id} at {position}")
+
+    def get_location(self, obj_id):
+        print(f"Getting location for object {obj_id}")
+        return np.zeros(3)
+
+    def learn_skill(self, skill_name, skill_inputs):
+        def random():
+            print(f"New skill: {skill_name}")
+
+        return random
+
+    def no_action(self):
+        print("Ending ...")
+
+    def get_primitives(self):
+        self.primitives = {
+            "find": {
+                "fn": self.find,
+                "description": """
+find(object_name, object_description)
+    Finds an object with the name `object_name`, and additional information about the object given by `object_description`.
+    Arguments:
+        object_name: str
+            Name of the object to find
+        object_description: str
+            Description of the object to find
+
+    Returns: int
+        object_id , an integer representing the found object
+""",
+            },
+            "pick": {
+                "fn": self.pick,
+                "description": """
+pick(object_id)
+    Picks up an object that `object_id` represents.
+    Arguments:
+        object_id: int
+            Id of the object to pick
+    Returns: None
+""",
+            },
+            "place": {
+                "fn": self.place,
+                "description": """
+place(object_id, position)
+    Places the object that `object_id` represents, at the location given by `position`
+    Arguments:
+        object_id: int
+            Id of the object to place
+        position: 3D array
+            the place location
+    Returns: None
+""",
+            },
+            "get_location": {
+                "fn": self.get_location,
+                "description": """
+get_location(object_id)
+    gives the location of the object `object_id`
+    Arguments:
+        object_id: int
+            Id of the object
+    Returns:
+        position: 3D array
+            the location of the object
+""",
+            },
+            "no_action": {
+                "fn": self.no_action,
+                "description": """
+no_action()
+    The function marks the end of a program.
+    Returns: None
+""",
+            },
+        }
+
+        fn_lst = list(self.primitives.keys())
+        self.primitives_lst = ",".join([f"`{fn_name}`" for fn_name in fn_lst])
+        self.primitives_description = "\n".join(
+            [self.primitives[fn]["description"] for fn in fn_lst]
+        )
+        self.primitives_description = "```\n" + self.primitives_description + "\n```"
+
+        return self.primitives
+
 
 if __name__ == "__main__":
     # scene_dir = os.path.join(DATA_DIR, "20221010_1759")
 
-    robot = RealRobot(gui=False, scene_dir=None, sam=True)
+    robot = RealRobot(gui=False, scene_dir=None, sam=True, clip=True, cam_idx=[0, 1, 2, 3])
     obs = robot.get_obs()
 
     pred_lst, names = get_detic_predictions(
