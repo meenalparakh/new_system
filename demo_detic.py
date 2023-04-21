@@ -63,19 +63,26 @@ if __name__ == "__main__":
 
     parser = ArgumentParser()
     parser.add_argument("--image-dir")
+    parser.add_argument("--vocabulary")
+    parser.add_argument("--custom-vocabulary")
     args = parser.parse_args()
     
-    rgbs = []
-
-    with open(os.path.join(args.image_dir, "args.pkl"), 'rb') as f:
-        image_fnames, vocab_args = pickle.load(f)
+    vocab_args = Args(vocabulary=args.vocabulary, custom_vocabulary=args.custom_vocabulary)
 
     rgbs = []
+    image_fnames = os.listdir(args.image_dir)
+    print("here", (image_fnames))
+
+    tmp = []
     for f in image_fnames:
-        rgb = cv2.imread(os.path.join(args.image_dir, f))
-        rgbs.append(rgb)
+        if f.endswith('.png'):
+            print(f); tmp.append(f)
+            rgb = cv2.imread(os.path.join(args.image_dir, f))
+            rgbs.append(rgb)
 
     preds_lst, names = get_predictions(rgbs, vocab_args)
 
+    info_dict = {tmp[idx]: preds_lst[idx] for idx in range(len(tmp))}
+
     with open("predictions_summary.pkl", 'wb') as f:
-        pickle.dump([preds_lst, names], f)
+        pickle.dump((info_dict, names), f)

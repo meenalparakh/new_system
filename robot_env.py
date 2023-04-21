@@ -339,6 +339,11 @@ class MyRobot(Robot):
 
         seg = pcd_seg[0][:, 0]
         unique_ids = list(np.unique(seg.astype(int)))
+        # print("unique_ids in first image", unique_ids)
+
+        unique_ids.remove(0)
+
+        # print("unique_ids in first image", unique_ids)
 
         for uid in unique_ids:
             valid = seg == uid
@@ -349,9 +354,16 @@ class MyRobot(Robot):
                 "embed": [label_infos[0][uid]["embedding"]],
             }
 
+        new_uids_count = np.max(unique_ids) + 1
+
         for idx in range(1, len(pcd_pts)):
             seg = pcd_seg[idx][:, 0]
             unique_ids = list(np.unique(seg.astype(int)))
+            # print("unique_ids in image", idx, unique_ids)
+
+            unique_ids.remove(0)
+            # print("unique_ids in image", idx, unique_ids)
+
             new_dict = {}
             for uid in unique_ids:
                 print(uid)
@@ -375,39 +387,19 @@ class MyRobot(Robot):
                     objects[obj_id]["pcd"] = np.vstack((p, new_pcd))
                     objects[obj_id]["rgb"] = np.vstack((r, new_rgb))
 
+                    # print_object_dicts(objects)
                     objects[obj_id]["label"].append(label_infos[idx][uid]["label"])
                     objects[obj_id]["embed"].append(label_infos[idx][uid]["embedding"])
 
                 else:
-                    new_dict[uid + np.random.randint(100, 200)] = {
+                    new_dict[new_uids_count] = {
                         "pcd": new_pcd,
                         "rgb": new_rgb,
-                        "label": label_infos[idx][uid]["label"],
-                        "embed": label_infos[idx][uid]["embedding"],
+                        "label": [label_infos[idx][uid]["label"]],
+                        "embed": [label_infos[idx][uid]["embedding"]],
                     }
+                    new_uids_count += 1
                     objects.update(new_dict)
-
-        # //////////////////////////////////////////////////////////////////////////////
-        # Visualization of point clouds
-        # //////////////////////////////////////////////////////////////////////////////
-
-        if visualization:
-            print("Number of objects", len(objects))
-            pcds = []
-            rand_colors = dp.get_colors(len(objects))
-            for idx, obj in enumerate(objects):
-                print(objects[obj]["label"])
-                pcd = objects[obj]["pcd"]
-                color = objects[obj]["rgb"]
-                p = open3d.geometry.PointCloud(open3d.utility.Vector3dVector(pcd))
-                p.colors = open3d.utility.Vector3dVector(color / 255.0)
-                open3d.visualization.draw_geometries([p])
-
-                p.paint_uniform_color(rand_colors[idx])
-                pcds.append(p)
-            open3d.visualization.draw_geometries(pcds)
-
-        # //////////////////////////////////////////////////////////////////////////////
 
         return objects
 

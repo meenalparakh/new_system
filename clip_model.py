@@ -5,7 +5,8 @@ from PIL import Image
 
 class MyCLIP:
     def __init__(self, is_cuda=False, model_type="ViT-B/32"):
-        self.is_cuda = is_cuda
+        # self.is_cuda = is_cuda
+        self.is_cuda = torch.cuda.is_available()
         
         print("The following models are available:", clip.available_models())  
         if not (model_type in clip.available_models()):

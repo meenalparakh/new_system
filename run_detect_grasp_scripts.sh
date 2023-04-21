@@ -3,7 +3,7 @@
 if [ "$1" = "detect" ]
 then
     cd Detic
-    python demo_detic.py --image-dir=$2 
+    python demo_detic.py --image-dir=$2 --vocabulary=$3 --custom-vocabulary=$4
 elif [ "$1" = "grasp" ]
 then
     cd ../grasping
