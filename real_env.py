@@ -18,22 +18,84 @@ Args = namedtuple("Args", ["vocabulary", "custom_vocabulary"])
 
 def get_detic_predictions(images, vocabulary="lvis", custom_vocabulary=""):
 
-    args = Args(vocabulary=vocabulary, custom_vocabulary=custom_vocabulary)
-    image_dir = "current_images"
-    os.makedirs(image_dir, exist_ok=True)
+    # args = Args(vocabulary=vocabulary, custom_vocabulary=custom_vocabulary)
+    # image_dir = "current_images"
+    # os.makedirs(image_dir, exist_ok=True)
 
-    for idx, img in enumerate(images):
-        cv2.imwrite(os.path.join(image_dir, f"{idx}.png"), img)
+    # for idx, img in enumerate(images):
+    #     cv2.imwrite(os.path.join(image_dir, f"{idx}.png"), img)
 
-    with open(os.path.join(image_dir, "args.pkl"), 'wb') as f:
-        pickle.dump(args, f)
+    # with open(os.path.join(image_dir, "args.pkl"), 'wb') as f:
+    #     pickle.dump(args, f)
             
-    subprocess.run(["./run_detect_grasp_scripts.sh", "detect", os.path.abspath(image_dir)])
+    # subprocess.run(["./run_detect_grasp_scripts.sh", "detect", os.path.abspath(image_dir)])
 
     with open("./Detic/predictions_summary.pkl", 'rb') as f:
         pred_lst, names = pickle.load(f)
 
+    if vocabulary == "custom":
+        names = custom_vocabulary.split(',')
+
     return pred_lst, names
+
+def get_bb_labels(pred, names):
+    '''
+    if there are N images
+    returned is N instances, each instance class 
+    containing a list of bbs and a corresponding list of labels
+    
+    the bbs (and the labels) are filtered as long as the bb covers 
+    non zero region in the pcd projection.
+
+    For the filtered bbs (and labels), find the crop embedding using clip
+    '''
+    
+    instances = pred["instances"]
+    pred_masks = instances.pred_masks
+    pred_boxes = instances.pred_boxes.tensor.numpy()
+    pred_classes = instances.pred_classes 
+    pred_scores = instances.scores
+    pred_labels = [names[idx] for idx in pred_classes]
+
+    return pred_boxes, pred_labels
+
+def get_segmentation_mask(predictor, image, bbs):
+    
+    '''
+    for each bb in the image, get the segmentation mask, using SAM
+    
+    returns a dictionary, that contains for each segment_id in the mask, 
+    the corresponding label and the embedding
+
+    this function will be used for each image to obtain a list of segs
+    and image_embeddings (see robot_env) class
+    '''
+    # pass
+    predictor.set_image(image, image_format="RGB")
+
+    results = []
+    for j in range(len(bbs)):
+        b = bbs[j].numpy()
+        masks, scores, logits = predictor.predict(
+                box=bbs[j],
+                multimask_output=False
+        )
+
+        results.append(masks[0])
+
+    return results
+
+def find_object(text_prompt, avg_obj_embeddings):
+    
+    '''
+    returns the object index in the obj_embeddings that best match the 
+    text_prompt
+    '''
+    pass
+
+
+
+
 
 class Camera:
     def __init__(self, cam_extr=None, cam_intr=None, H=None, W=None):
@@ -55,16 +117,28 @@ class Camera:
 
 
 class RealRobot(MyRobot):
-    def __init__(self, gui=False, scene_dir=None, realsense_cams=False):
+    def __init__(self, gui=False, scene_dir=None, realsense_cams=False, sam=False):
         super().__init__(gui)
         self.scene_dir = scene_dir
+        self.table_bounds = np.array([[0.15, 0.50], [-0.5, 0.5], [0.03, 1.0]])
+
+        self.realsense_cams = None
         if realsense_cams:
             from get_real_data import RealSenseCameras
             self.realsense_cams = RealSenseCameras([0, 1, 2, 3])
-        else:
-            self.realsense_cams = None
 
-        self.table_bounds = np.array([[0.15, 0.50], [-0.5, 0.5], [0.03, 1.0]])
+        self.sam_predictor = None
+        if sam:
+            self.set_sam()
+
+    def set_sam(self):
+        from segment_anything import sam_model_registry, SamPredictor
+        sam_checkpoint = "sam_model/sam_vit_h_4b8939.pth"
+        model_type = "vit_h"
+        device = "gpu"
+        sam = sam_model_registry[model_type](checkpoint=sam_checkpoint)
+        sam.to(device=device)
+        self.sam_predictor = SamPredictor(sam)
 
     def get_obs(self, source="pkl"):
         ## source can be "scene_dir", "pkl", "realsense"
@@ -131,7 +205,12 @@ if __name__ == "__main__":
     robot = RealRobot(gui=False, scene_dir=None)
     obs = robot.get_obs()
 
-    pred_lst, names = get_detic_predictions(obs["colors"])
+    pred_lst, names = get_detic_predictions(obs["colors"], vocabulary="custom", custom_vocabulary="mug,tray")
+
+    for idx, rgb in enumerate(obs["colors"]):
+        pred_boxes, pred_labels = get_bb_labels(pred_lst[idx], names)
+        masks = get_segmentation_mask(robot.sam_predictor, rgb, pred_boxes)
+        
 
     ###################### combined pcd visualization 
     # combined_pts, combined_rgb = robot.get_combined_pcd(obs["colors"], obs["depths"], idx=[0, 1, 3])
