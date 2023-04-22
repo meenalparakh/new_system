@@ -6,6 +6,7 @@ import cv2
 import pickle
 
 from detectron2.config import get_cfg
+import shutil
 
 sys.path.insert(0, 'third_party/CenterNet2/')
 from centernet.config import add_centernet_config
@@ -29,9 +30,9 @@ def setup_cfg():
     cfg.merge_from_file("configs/Detic_LCOCOI21k_CLIP_SwinB_896b32_4x_ft4x_max-size.yaml")
     cfg.merge_from_list(['MODEL.WEIGHTS', 'models/Detic_LCOCOI21k_CLIP_SwinB_896b32_4x_ft4x_max-size.pth'])
     # Set score_threshold for builtin models
-    cfg.MODEL.RETINANET.SCORE_THRESH_TEST = 0.5
-    cfg.MODEL.ROI_HEADS.SCORE_THRESH_TEST = 0.5
-    cfg.MODEL.PANOPTIC_FPN.COMBINE.INSTANCES_CONFIDENCE_THRESH = 0.5
+    cfg.MODEL.RETINANET.SCORE_THRESH_TEST = 0.3
+    cfg.MODEL.ROI_HEADS.SCORE_THRESH_TEST = 0.3
+    cfg.MODEL.PANOPTIC_FPN.COMBINE.INSTANCES_CONFIDENCE_THRESH = 0.3
     cfg.MODEL.ROI_BOX_HEAD.ZEROSHOT_WEIGHT_PATH = 'rand' # load later
     cfg.MODEL.ROI_HEADS.ONE_CLASS_PER_PROPOSAL = True
     cfg.freeze()
@@ -43,7 +44,11 @@ def get_predictions(rgbs, _args):
 
     pred_lst = []
     output_dir = "detic_predictions"
-    os.makedirs(output_dir, exist_ok=True)
+    if os.path.exists(output_dir):
+        shutil.rmtree(output_dir)
+
+    os.makedirs(output_dir)
+    
 
     for idx, im in enumerate(rgbs):
         print(f"finding objects in {idx}")
@@ -51,7 +56,7 @@ def get_predictions(rgbs, _args):
         # converting the input image to BGR format 
         # (the image needs to be BGR, and 0-255, np.uint8)
 
-        img = im[:, :, ::-1].astype(np.uint8)
+        img = im.astype(np.uint8)
         predictions, visualized_output = demo.run_on_image(img)
         pred_lst.append(predictions)
         visualized_output.save(os.path.join(output_dir, f"predictions_{idx}.png"))

@@ -276,6 +276,7 @@ class MyRobot(Robot):
         depths,
         segs,
         remove_floor_ht=0.90,
+        std_threshold=0.01,
         label_infos=None,
         visualization=False,
         process_pcd_fn=None
@@ -337,36 +338,44 @@ class MyRobot(Robot):
 
         objects = {}
 
-        seg = pcd_seg[0][:, 0]
-        unique_ids = list(np.unique(seg.astype(int)))
-        # print("unique_ids in first image", unique_ids)
+        start_idx = 0
+        for j in range(len(pcd_pts)):
 
-        unique_ids.remove(0)
+            seg = pcd_seg[j][:, 0]
+            unique_ids = list(np.unique(seg.astype(int)))
+            print("unique_ids in first image", unique_ids)
 
-        # print("unique_ids in first image", unique_ids)
+            if 0 in unique_ids:
+                unique_ids.remove(0)
 
-        for uid in unique_ids:
-            valid = seg == uid
-            objects[uid] = {
-                "pcd": pcd_pts[0][valid],
-                "rgb": pcd_rgb[0][valid],
-                "label": [label_infos[0][uid]["label"]],
-                "embed": [label_infos[0][uid]["embedding"]],
-            }
+            print("unique_ids in first image", unique_ids)
 
-        new_uids_count = np.max(unique_ids) + 1
+            if len(unique_ids) > 0:
+                start_idx = j
 
-        for idx in range(1, len(pcd_pts)):
+                for uid in unique_ids:
+                    valid = seg == uid
+                    objects[uid] = {
+                        "pcd": pcd_pts[j][valid],
+                        "rgb": pcd_rgb[j][valid],
+                        "label": [label_infos[j][uid]["label"]],
+                        "embed": [label_infos[j][uid]["embedding"]],
+                    }
+
+                new_uids_count = np.max(unique_ids) + 1
+                break
+
+        for idx in range(start_idx+1, len(pcd_pts)):
             seg = pcd_seg[idx][:, 0]
             unique_ids = list(np.unique(seg.astype(int)))
-            # print("unique_ids in image", idx, unique_ids)
+            print("unique_ids in image", idx, unique_ids)
 
             unique_ids.remove(0)
-            # print("unique_ids in image", idx, unique_ids)
+            print("unique_ids in image", idx, unique_ids)
 
             new_dict = {}
             for uid in unique_ids:
-                print(uid)
+                print(uid, label_infos[idx][uid]["label"])
                 valid = seg == uid
                 new_pcd = pcd_pts[idx][valid]
                 new_rgb = pcd_rgb[idx][valid]
@@ -378,8 +387,10 @@ class MyRobot(Robot):
                     d = combined_variance(new_pcd, original_pcd)
                     diffs.append(d)
 
+                print(diffs)
+
                 min_diff = np.min(diffs)
-                if min_diff < 0.02:
+                if min_diff < std_threshold:
                     print("min_diff less than 2 cm, updating pcd")
                     obj_id = obj_lst[np.argmin(diffs)]
                     p = objects[obj_id]["pcd"]

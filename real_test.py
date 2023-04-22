@@ -6,40 +6,49 @@ import distinctipy as dp
 import numpy as np
 from prompt_manager import get_plan, execute_plan
 from gpt_module import ChatGPTModule
+import pickle
 
 
 if __name__ == "__main__":
     robot = RealRobot(
         gui=False,
         scene_dir=None,
-        realsense_cams=True,
+        realsense_cams=False,
         sam=True,
         clip=True,
         cam_idx=[0, 1, 3],
     )
 
-    obs = robot.get_obs(source="realsense")
+    obs = robot.get_obs(source="obs2.pkl")
 
     ###################### combined pcd visualization
     combined_pts, combined_rgb = robot.get_combined_pcd(
         obs["colors"], obs["depths"], idx=[0, 1, 3]
     )
     viz = VizServer()
-    # viz.view_pcd(combined_pts, combined_rgb)
+    viz.view_pcd(combined_pts, combined_rgb)
 
     segs, info_dict = robot.get_segment_labels_and_embeddings(
         obs["colors"],
         obs["depths"],
         robot.clip,
         vocabulary="custom",
-        custom_vocabulary="mug,tray",
+        custom_vocabulary="bowl,mug",
     )
+
+    with open("cached_info.pkl", 'wb') as f:
+        pickle.dump([segs, info_dict], f)
+
+    with open("cached_info.pkl", 'rb') as f:
+        segs, info_dict = pickle.load(f)
+
 
     object_dicts = robot.get_segmented_pcd(
         obs["colors"],
         obs["depths"],
         segs,
         remove_floor_ht=1.0,
+        std_threshold=0.02,
         label_infos=info_dict,
         visualization=True,
         process_pcd_fn=robot.crop_pcd,
