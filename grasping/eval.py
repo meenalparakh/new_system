@@ -44,18 +44,29 @@ def initialize_net(config_file, load_model, save_path, args):
     optimizer = torch.optim.Adam(model.parameters(), lr=0.001)
     if load_model==True:
         print('loading model')
-        checkpoint = torch.load(save_path)
+        checkpoint = torch.load(save_path, map_location=device)
         model.load_state_dict(checkpoint['state_dict'])
         optimizer.load_state_dict(checkpoint['optimizer'])
 
     return model, optimizer, config_dict
 
 def cgn_infer(cgn, pcd, obj_mask=None, threshold=0.5):
+
+    print("pcd shape:", pcd.shape)
+    if obj_mask is not None:    
+        print("mask shape:", obj_mask.shape)
+
     cgn.eval()
-    if pcd.shape[0] > 20000:
+    n = pcd.shape[0]
+    if n > 20000:
+        print("Size larger than 20,000, downsampling the pcd")
         downsample = np.array(random.sample(range(pcd.shape[0]-1), 20000))
     else:
-        downsample = np.arange(20000)
+        print("Size smaller than 20,000, oversampling the pcd")
+        remaining = 20000 - n
+        idx = np.arange(n)
+        other_idx = np.random.randint(0, n, size=remaining)
+        downsample = np.concatenate((idx, other_idx))
     pcd = pcd[downsample, :]
 
     pcd = torch.Tensor(pcd).to(dtype=torch.float32).to(cgn.device)

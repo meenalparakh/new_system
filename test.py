@@ -25,6 +25,7 @@ if __name__ == "__main__":
         obs["depths"],
         segs,
         remove_floor_ht=1.0,
+        std_threshold=0.02,
         label_infos=info_dict,
         visualization=True,
         process_pcd_fn=robot.crop_pcd

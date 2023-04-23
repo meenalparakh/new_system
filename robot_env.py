@@ -96,7 +96,7 @@ class MyRobot(Robot):
             "table/table.urdf", [0.6, 0, 0.4], ori, scaling=0.9
         )
         self.pb_client.changeDynamics(self.table_id, 0, mass=0, lateralFriction=2.0)
-        self.table_bounds = np.array([[0.25, 0.75], [-0.5, 0.5], [1.0, 3.0]])
+        self.table_bounds = np.array([[0.05, 0.95], [-0.5, 0.5], [0.90, 3.0]])
 
         # setup camera
         self.cams = []
@@ -304,7 +304,7 @@ class MyRobot(Robot):
         # ////////////////////////////////////////////////////////////////
         return segs, image_embeddings
 
-    def get_grasp(self, obj_id, threshold=0.8):
+    def get_grasp(self, obj_id, threshold=0.8, visualize=False):
         combined_pcds = []
         combined_masks = []
 
@@ -316,7 +316,9 @@ class MyRobot(Robot):
             combined_masks.append(mask)
 
         final_pcd = np.concatenate(combined_pcds, axis=0)
-        final_mask = np.concatenate(combined_masks, axis=0)
+        final_mask = np.concatenate(combined_masks, axis=0).reshape((-1, 1))
+
+        assert len(final_mask) == len(final_pcd)
 
         pred_grasps, pred_success, _ = cgn_infer(
             self.grasper, final_pcd, final_mask, threshold=threshold
@@ -326,7 +328,18 @@ class MyRobot(Robot):
         print('model pass.', n, 'grasps found.')
         return pred_grasps, pred_success
     
-    def pick(self, pick_pose, translate=0.13):
+
+    def pick(self, obj_id):
+        pred_grasps, pred_success = self.get_grasp(obj_id, threshold=0.8)
+
+        # grasp_idx = random.choice(range(len(grasps)))
+        grasp_idx = np.argmax(pred_success)
+        grasp_pose = pred_grasps[grasp_idx]
+
+        self.pick_given_pose(grasp_pose)
+
+
+    def pick_given_pose(self, pick_pose, translate=0.13):
 
         z_rot = np.eye(4)
         z_rot[2, 3] = translate
@@ -476,10 +489,10 @@ class MyRobot(Robot):
 
         for idx in range(start_idx+1, len(pcd_pts)):
             seg = pcd_seg[idx][:, 0]
-            unique_ids = list(np.unique(seg.astype(int)))
+            unique_ids = np.array(np.unique(seg.astype(int)))
             print("unique_ids in image", idx, unique_ids)
 
-            unique_ids.remove(0)
+            unique_ids = unique_ids[unique_ids > 0]
             print("unique_ids in image", idx, unique_ids)
 
             new_dict = {}
