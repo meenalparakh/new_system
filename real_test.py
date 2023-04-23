@@ -1,5 +1,4 @@
 from robot_env import print_object_dicts
-from clip_model import MyCLIP
 from real_env import RealRobot
 from visualize_pcd import VizServer
 import distinctipy as dp
@@ -25,7 +24,7 @@ if __name__ == "__main__":
         obs["colors"], obs["depths"], idx=[0, 1, 3]
     )
     viz = VizServer()
-    # viz.view_pcd(combined_pts, combined_rgb)
+    viz.view_pcd(combined_pts, combined_rgb)
 
     segs, info_dict = robot.get_segment_labels_and_embeddings(
         obs["colors"],
@@ -45,10 +44,10 @@ if __name__ == "__main__":
         process_pcd_fn=robot.crop_pcd,
     )
 
-    description, new_dcts = robot.get_scene_description(object_dicts)
+    description, object_dicts = robot.get_scene_description(object_dicts)
 
-    robot.object_dicts = new_dcts
-    print_object_dicts(new_dcts)
+    robot.object_dicts = object_dicts
+    print_object_dicts(object_dicts)
     print(description)
 
     # //////////////////////////////////////////////////////////////////////////////

@@ -2,7 +2,6 @@ import os
 import numpy as np
 import open3d
 from robot_env import MyRobot
-from visualize_pcd import VizServer
 
 import matplotlib.pyplot as plt
 
@@ -207,24 +206,28 @@ class Camera:
 
 class RealRobot(MyRobot):
     def __init__(
-        self, gui=False, scene_dir=None, realsense_cams=False, sam=False, clip=False, cam_idx=[0, 1, 2, 3]
+        self,
+        gui=False,
+        scene_dir=None,
+        realsense_cams=False,
+        sam=False,
+        clip=False,
+        grasper=False,
+        cam_idx=[0, 1, 2, 3],
     ):
-        super().__init__(gui)
+        super().__init__(gui, grasper=grasper, clip=clip)
         self.scene_dir = scene_dir
         self.table_bounds = np.array([[0.15, 0.50], [-0.5, 0.5], [0.03, 1.0]])
 
         self.realsense_cams = None
         if realsense_cams:
             from get_real_data import RealSenseCameras
+
             self.realsense_cams = RealSenseCameras(cam_idx)
 
         self.sam_predictor = None
         if sam:
             self.set_sam()
-        if clip:
-            from clip_model import MyCLIP
-
-            self.clip = MyCLIP()
 
     def set_sam(self):
         from segment_anything import sam_model_registry, SamPredictor
@@ -296,23 +299,6 @@ class RealRobot(MyRobot):
             image_embeddings.append(embedding_dict)
 
         return segs, image_embeddings
-
-    def crop_pcd(self, pts, rgb=None, segs=None, bounds=None):
-        if bounds is None:
-            bounds = self.table_bounds
-        # Filter out 3D points that are outside of the predefined bounds.
-        ix = (pts[Ellipsis, 0] >= bounds[0, 0]) & (pts[Ellipsis, 0] < bounds[0, 1])
-        iy = (pts[Ellipsis, 1] >= bounds[1, 0]) & (pts[Ellipsis, 1] < bounds[1, 1])
-        iz = (pts[Ellipsis, 2] >= bounds[2, 0]) & (pts[Ellipsis, 2] < bounds[2, 1])
-        valid = ix & iy & iz
-
-        pts = pts[valid]
-        if rgb is not None:
-            rgb = rgb[valid]
-        if segs is not None:
-            segs = segs[valid]
-
-        return pts, rgb, segs
 
     def find(self, object_name, object_description):
         print(f"finding object: {object_name}, description: {object_description}")
@@ -436,7 +422,9 @@ no_action()
 if __name__ == "__main__":
     # scene_dir = os.path.join(DATA_DIR, "20221010_1759")
 
-    robot = RealRobot(gui=False, scene_dir=None, sam=True, clip=True, cam_idx=[0, 1, 2, 3])
+    robot = RealRobot(
+        gui=False, scene_dir=None, sam=True, clip=True, cam_idx=[0, 1, 2, 3]
+    )
     obs = robot.get_obs()
 
     pred_lst, names = get_detic_predictions(

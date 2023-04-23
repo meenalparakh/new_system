@@ -10,6 +10,10 @@ import numpy as np
 import distinctipy as dp
 from heuristics import get_relation
 from scene_description_utils import construct_graph, graph_traversal, text_description
+from grasping.eval import initialize_net, cgn_infer
+from scipy.spatial.transform import Rotation as R
+from grasp import control_robot
+
 
 OPP_RELATIONS = {"above": "below", "contained_in": "contains"}
 
@@ -61,7 +65,7 @@ def visualize_pcd(xyz, colors=None):
 
 
 class MyRobot(Robot):
-    def __init__(self, gui=False):
+    def __init__(self, gui=False, grasper=False, clip=False):
         super().__init__(
             "franka",
             pb_cfg={"gui": gui},
@@ -69,6 +73,19 @@ class MyRobot(Robot):
             use_eetool=False,
             use_base=False,
         )
+
+        if grasper:
+            self.grasper, _, _ = initialize_net(
+                config_file="./grasping/model/",
+                load_model=True,
+                save_path="./grasping/checkpoints/current.pth",
+                args=None,
+            )
+        if clip:
+            from clip_model import MyCLIP
+            self.clip = MyCLIP()
+
+    def reset(self, task_name):
         # success = self.arm.go_home()
         # if not success:
         #     log_warn("Robot go_home failed!!!")
@@ -79,6 +96,7 @@ class MyRobot(Robot):
             "table/table.urdf", [0.6, 0, 0.4], ori, scaling=0.9
         )
         self.pb_client.changeDynamics(self.table_id, 0, mass=0, lateralFriction=2.0)
+        self.table_bounds = np.array([[0.25, 0.75], [-0.5, 0.5], [1.0, 3.0]])
 
         # setup camera
         self.cams = []
@@ -91,16 +109,32 @@ class MyRobot(Robot):
 
         focus_pt = [0, 0, 1]  # ([x, y, z])
         self.cam.setup_camera(focus_pt=focus_pt, dist=3, yaw=90, pitch=0, roll=0)
-        self.object_dicts = {}
 
+        self.object_dicts = {}
         self.sim_dict = {"object_dicts": {}}
 
-    def reset(self, task_name):
         self.task = TASK_LST[task_name](self)
         self.task.reset()
         for _ in range(100):
             self.pb_client.stepSimulation()
 
+    def crop_pcd(self, pts, rgb=None, segs=None, bounds=None):
+        if bounds is None:
+            bounds = self.table_bounds
+        # Filter out 3D points that are outside of the predefined bounds.
+        ix = (pts[Ellipsis, 0] >= bounds[0, 0]) & (pts[Ellipsis, 0] < bounds[0, 1])
+        iy = (pts[Ellipsis, 1] >= bounds[1, 0]) & (pts[Ellipsis, 1] < bounds[1, 1])
+        iz = (pts[Ellipsis, 2] >= bounds[2, 0]) & (pts[Ellipsis, 2] < bounds[2, 1])
+        valid = ix & iy & iz
+
+        pts = pts[valid]
+        if rgb is not None:
+            rgb = rgb[valid]
+        if segs is not None:
+            segs = segs[valid]
+
+        return pts, rgb, segs
+    
     def _camera_cfgs(self):
         _C = CN()
         _C.ZNEAR = 0.01
@@ -269,6 +303,81 @@ class MyRobot(Robot):
                 print(mask_id, ":", d[mask_id]["label"])
         # ////////////////////////////////////////////////////////////////
         return segs, image_embeddings
+
+    def get_grasp(self, obj_id, threshold=0.8):
+        combined_pcds = []
+        combined_masks = []
+
+        for oid in self.object_dicts:
+            pcd = self.object_dicts[oid]["pcd"]
+            mask = np.ones(len(pcd)) if oid == obj_id else np.zeros(len(pcd))
+
+            combined_pcds.append(pcd)
+            combined_masks.append(mask)
+
+        final_pcd = np.concatenate(combined_pcds, axis=0)
+        final_mask = np.concatenate(combined_masks, axis=0)
+
+        pred_grasps, pred_success, _ = cgn_infer(
+            self.grasper, final_pcd, final_mask, threshold=threshold
+        )
+
+        n = 0 if pred_success is None else pred_grasps.shape[0]
+        print('model pass.', n, 'grasps found.')
+        return pred_grasps, pred_success
+    
+    def pick(self, pick_pose, translate=0.13):
+
+        z_rot = np.eye(4)
+        z_rot[2, 3] = translate
+        z_rot[:3, :3] = R.from_euler('z', np.pi/2).as_matrix()
+        gripper_pose = np.matmul(pick_pose, z_rot)
+
+        rotation = gripper_pose[:3, :3]
+        direction_vector = gripper_pose[:3, 2]
+        pick_position = gripper_pose[:3, 3]
+        # pick_position[2] = pick_position[2] - 0.10
+        pose = (pick_position, rotation, direction_vector)
+
+        control_robot(self, pose, robot_category='franka', control_mode='linear', 
+                            move_up=0.15, linear_offset=-0.022)
+
+        print("Pick completed")
+
+
+    def place(self, position):
+
+        if len(position) == 2:
+            position = [*position, 0.9]
+
+        # direction = self.arm.get_ee_pose()[2]
+        # pose = (position, None, direction[:3, 2])
+        # control_robot(self, pose, robot_category='franka', control_mode='linear', 
+        #                     move_up=0.15, linear_offset=-0.022)
+
+        current_position = self.arm.get_ee_pose()[0]
+        direction = np.array(position) - current_position
+        direction[2] = 0
+        self.arm.move_ee_xyz(direction)
+    
+        preplace_position = self.arm.get_ee_pose()[0]
+        success = True
+        while success:
+            success = self.arm.move_ee_xyz([0, 0, -0.01])
+
+        self.arm.eetool.open()
+
+        current_rotation = self.arm.get_ee_pose()[2]
+        delta = current_rotation @ np.array([[0], [0], [-0.05]])
+        self.arm.move_ee_xyz(delta[:, 0])
+
+        self.arm.move_ee_xyz([0, 0, 0.15])
+        self.arm.go_home()
+        # current_position = self.arm.get_ee_pose()[0]
+        # self.arm.move_ee_xyz(preplace_position-current_position)
+        # # self.arm.set_ee_pose(pos=preplace_position)
+        # self.arm.eetool.close()
+        print("place completed")
 
     def get_segmented_pcd(
         self,
