@@ -189,6 +189,9 @@ def construct_graph(object_dict, threshold_dist=0.3):
     for o1 in reduced_obj_lst:
         object_dict[o1]["edges"] = set()
 
+    if len(reduced_obj_lst) == 1:
+        return object_dict, reduced_obj_lst
+
     for o1_idx, o1 in enumerate(reduced_obj_lst):
         
         center = center_lst[o1_idx:o1_idx+1, :]
@@ -196,6 +199,7 @@ def construct_graph(object_dict, threshold_dist=0.3):
         ds[o1_idx] = 100
         k = min(1, len(ds)-1)
         indices = np.argpartition(ds, k)
+        print("construct graph", indices)
         if (len(ds) > 1) and (ds[indices[1]] > threshold_dist):
             to_add = reduced_obj_array[indices[0]]
             object_dict[o1]["edges"].add(to_add)

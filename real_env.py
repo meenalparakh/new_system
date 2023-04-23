@@ -8,6 +8,7 @@ import matplotlib.pyplot as plt
 import pickle
 import subprocess
 import cv2
+import shutil
 
 # from get_real_data import RealSenseCameras
 
@@ -20,12 +21,15 @@ subprocess.run(["cp", "demo_detic.py", "Detic/"])
 
 def get_detic_predictions(images, vocabulary="lvis", custom_vocabulary=""):
     image_dir = "current_images"
-    os.makedirs(image_dir, exist_ok=True)
+    if os.path.exists(image_dir):
+        shutil.rmtree(image_dir)
+
+    os.makedirs(image_dir)
 
     image_fnames = []
     for idx, img in enumerate(images):
         fname = os.path.join(image_dir, f"{idx}.png")
-        cv2.imwrite(fname, img)
+        cv2.imwrite(fname, img[:,:,::-1])
         image_fnames.append(f"{idx}.png")
 
     print(image_fnames)
@@ -128,7 +132,9 @@ def get_segmentation_mask(predictor, image, bbs, labels, prefix=0):
     predictor.set_image(image, image_format="RGB")
 
     sam_predictions_dir = "sam_predictions"
-    os.makedirs(sam_predictions_dir, exist_ok=True)
+    if os.path.exists(sam_predictions_dir):
+        shutil.rmtree(sam_predictions_dir)
+    os.makedirs(sam_predictions_dir)
 
     H, W = image.shape[:2]
     seg = np.zeros((H, W), dtype=int)
@@ -169,6 +175,11 @@ def get_clip_embeddings(d, clip_):
     keys = list(d.keys())
 
     crops = [d[k]["crop"] for k in keys]
+
+    if len(crops) == 0:
+        return d
+
+    print("number of crops", len(crops))
     embeddings = clip_.get_image_embeddings(crops)
 
     for idx, k in enumerate(keys):
@@ -217,7 +228,7 @@ class RealRobot(MyRobot):
     ):
         super().__init__(gui, grasper=grasper, clip=clip)
         self.scene_dir = scene_dir
-        self.table_bounds = np.array([[0.15, 0.50], [-0.5, 0.5], [0.03, 1.0]])
+        self.table_bounds = np.array([[0.15, 1.0], [-0.5, 0.5], [-0.01, 1.0]])
 
         self.realsense_cams = None
         if realsense_cams:
@@ -257,8 +268,8 @@ class RealRobot(MyRobot):
             configs = rescale_extrinsics(configs, scale)
             obs = {"colors": colors, "depths": depths, "configs": configs}
 
-        elif source == "pkl":
-            with open("obs.pkl", "rb") as f:
+        elif "pkl" in source:
+            with open(source, "rb") as f:
                 obs = pickle.load(f)
         elif source == "realsense":
             obs = self.realsense_cams.get_rgb_depth()
