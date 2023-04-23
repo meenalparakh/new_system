@@ -3,6 +3,7 @@ from scipy.spatial.transform import Rotation as R
 
 ASSET_LOCATION = "../object-relations/data_new/"
 
+
 class CupOverBowl:
     def __init__(self, robot):
         self.robot = robot
@@ -52,10 +53,8 @@ class CupOverBowl:
             useFixedBase=False,
         )
 
-
-
         for i in range(4):
-            self.robot.sim_dict['object_dicts'][i] = {
+            self.robot.sim_dict["object_dicts"][i] = {
                 "name": "unknonwn",
                 "used_name": "unknown",
                 "mask_id": None,
@@ -67,15 +66,49 @@ class CupOverBowl:
                 "lies_below": set(),
             }
 
-        self.robot.sim_dict['object_dicts'][0]["name"] = "cup"
-        self.robot.sim_dict['object_dicts'][0]["mask_id"] = cup_id
-        self.robot.sim_dict['object_dicts'][1]["name"] = "bowl"
-        self.robot.sim_dict['object_dicts'][1]["mask_id"] = bowl_id
+        self.robot.sim_dict["object_dicts"][0]["name"] = "cup"
+        self.robot.sim_dict["object_dicts"][0]["mask_id"] = cup_id
+        self.robot.sim_dict["object_dicts"][1]["name"] = "bowl"
+        self.robot.sim_dict["object_dicts"][1]["mask_id"] = bowl_id
 
-        self.robot.sim_dict['object_dicts'][2]["name"] = "basket"
-        self.robot.sim_dict['object_dicts'][2]["mask_id"] = basket_id
-        self.robot.sim_dict['object_dicts'][3]["name"] = "bowl"
-        self.robot.sim_dict['object_dicts'][3]["mask_id"] = bowl_id2
+        self.robot.sim_dict["object_dicts"][2]["name"] = "basket"
+        self.robot.sim_dict["object_dicts"][2]["mask_id"] = basket_id
+        self.robot.sim_dict["object_dicts"][3]["name"] = "bowl"
+        self.robot.sim_dict["object_dicts"][3]["mask_id"] = bowl_id2
+
+
+class OneObject:
+    def __init__(self, robot):
+        self.robot = robot
+        self.task_name = "one_object"
+
+    def reset(self):
+        cup_quat = R.from_euler("xyz", [np.pi / 2, 0, 0]).as_quat()
+        print("Cup quat", cup_quat)
+        cup_id = self.robot.pb_client.load_urdf(
+            ASSET_LOCATION
+            + "shapenet_objects/03797390/3d1754b7cb46c0ce5c8081810641ef6/models/model_normalized.urdf",
+            base_pos=[0.3, 0.24, 1.01],
+            base_ori=cup_quat,
+            scaling=0.2,
+            useFixedBase=True,
+        )
+        self.robot.pb_client.changeDynamics(cup_id, 1, mass=0.2, lateralFriction=2.0)
+
+        self.robot.sim_dict["object_dicts"][0] = {
+            "name": "unknonwn",
+            "used_name": "unknown",
+            "mask_id": None,
+            "object_center": None,
+            "pixel_center": None,
+            "contains": set(),
+            "edges": set(),
+            "lies_over": set(),
+            "lies_below": set(),
+        }
+
+        self.robot.sim_dict["object_dicts"][0]["name"] = "mug"
+        self.robot.sim_dict["object_dicts"][0]["mask_id"] = cup_id
 
 
 class RealTask:
@@ -86,4 +119,4 @@ class RealTask:
         print("Real Env")
 
 
-task_lst = {"cup_over_bowl": CupOverBowl, "real_env": RealTask}
+task_lst = {"cup_over_bowl": CupOverBowl, "real_env": RealTask, "one_object": OneObject}

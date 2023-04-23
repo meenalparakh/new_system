@@ -112,7 +112,7 @@ def visualize(pcd, grasps, mc_vis=None):
     viz_grasps(mc_vis, grasp_kp, name='gripper/', freq=1)
 
 def get_key_points(poses, include_sym=False):
-    gripper_object = mesh_utils.create_gripper(configuration='panda', root_folder=cn_path)
+    gripper_object = mesh_utils.create_gripper('panda', root_folder='./')
     gripper_np = gripper_object.get_control_point_tensor(poses.shape[0])
     hom = np.ones((gripper_np.shape[0], gripper_np.shape[1], 1))
     gripper_pts = np.concatenate((gripper_np, hom), 2).transpose(0,2,1)

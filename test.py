@@ -3,10 +3,12 @@ from clip_model import MyCLIP
 from visualize_pcd import VizServer
 import distinctipy as dp
 import numpy as np
+import pickle
 
 if __name__ == "__main__":
     robot = MyRobot(gui=True, grasper=True, clip=True)
-    robot.reset("cup_over_bowl")
+    # robot.reset("cup_over_bowl")
+    robot.reset("one_object")
 
     obs = robot.get_obs()
 
@@ -56,8 +58,28 @@ if __name__ == "__main__":
     pcds = np.vstack(pcds); colors = np.vstack(colors)
     viz.view_pcd(pcds, colors)
 
+    # //////////////////////////////////////////////////////////////////////////////
+    # Grasps
+    # //////////////////////////////////////////////////////////////////////////////
+
+
+    all_grasps = []; all_scores = []
     for obj_id in robot.object_dicts:
-        robot.get_grasp(obj_id)
+        grasps, scores = robot.get_grasp(obj_id,  threshold=0.95)
+
+        if scores is None:
+            print("No grasps to show.")
+        
+        else:
+            all_grasps.append(grasps)
+            all_scores.append(scores)
+            best_id = np.argmax(scores)
+            chosen_grasp = grasps[best_id: best_id+1]
+            # chosen_grasp = grasps
+            viz.view_grasps(chosen_grasp, name=robot.object_dicts[obj_id]["used_name"].replace(" ", "_"), freq=100)
+
+    with open("object_grasps.pkl", 'wb') as f:
+        pickle.dump([all_grasps, all_scores], f)
 
     # //////////////////////////////////////////////////////////////////////////////
     # LLM Planning

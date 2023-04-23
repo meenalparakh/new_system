@@ -168,7 +168,7 @@ def create_gripper(name, root_folder, configuration=None):
         [type] -- gripper object
     """
     if name.lower() == 'panda':
-        return PandaGripper(q=configuration, root_folder=root_folder)
+        return PandaGripper(q=configuration, root_dir=root_folder)
     else:
         raise Exception("Unknown gripper: {}".format(name))
 

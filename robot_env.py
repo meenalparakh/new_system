@@ -99,16 +99,11 @@ class MyRobot(Robot):
         self.table_bounds = np.array([[0.05, 0.95], [-0.5, 0.5], [0.90, 3.0]])
 
         # setup camera
-        self.cams = []
-        for i in range(2):
-            self.cams.append(
-                RGBDCameraPybullet(cfgs=self._camera_cfgs(), pb_client=self.pb_client)
-            )
         self._setup_cameras()
         self.depth_scale = 1.0
 
-        focus_pt = [0, 0, 1]  # ([x, y, z])
-        self.cam.setup_camera(focus_pt=focus_pt, dist=3, yaw=90, pitch=0, roll=0)
+        # focus_pt = [0, 0, 1]  # ([x, y, z])
+        # self.cam.setup_camera(focus_pt=focus_pt, dist=3, yaw=90, pitch=0, roll=0)
 
         self.object_dicts = {}
         self.sim_dict = {"object_dicts": {}}
@@ -170,11 +165,24 @@ class MyRobot(Robot):
         return {"colors": rgbs, "depths": depths}
 
     def _setup_cameras(self):
+        self.cams = []
+
+        for i in range(4):
+            self.cams.append(
+                RGBDCameraPybullet(cfgs=self._camera_cfgs(), pb_client=self.pb_client)
+            )
+
         self.cams[0].setup_camera(
             focus_pt=[0.5, 0.0, 1.0], dist=1, yaw=-90, pitch=-45, roll=0
         )
         self.cams[1].setup_camera(
             focus_pt=[0.5, 0.0, 1.0], dist=1, yaw=90, pitch=-45, roll=0
+        )
+        self.cams[2].setup_camera(
+            focus_pt=[0.5, 0.0, 1.0], dist=1, yaw=0, pitch=-45, roll=0
+        )
+        self.cams[3].setup_camera(
+            focus_pt=[0.5, 0.0, 1.0], dist=1, yaw=0, pitch=-90, roll=0
         )
 
     def get_combined_pcd(self, colors, depths, idx=None):
@@ -304,7 +312,7 @@ class MyRobot(Robot):
         # ////////////////////////////////////////////////////////////////
         return segs, image_embeddings
 
-    def get_grasp(self, obj_id, threshold=0.8, visualize=False):
+    def get_grasp(self, obj_id, threshold=0.85):
         combined_pcds = []
         combined_masks = []
 
@@ -316,6 +324,12 @@ class MyRobot(Robot):
             combined_masks.append(mask)
 
         final_pcd = np.concatenate(combined_pcds, axis=0)
+
+        ht = np.min(final_pcd[:, 2])
+        x, y = np.mean(final_pcd[:, :2], axis=0)
+
+        translation = np.array([x, y, ht])
+        final_pcd = final_pcd - translation
         final_mask = np.concatenate(combined_masks, axis=0).reshape((-1, 1))
 
         assert len(final_mask) == len(final_pcd)
@@ -323,14 +337,18 @@ class MyRobot(Robot):
         pred_grasps, pred_success, _ = cgn_infer(
             self.grasper, final_pcd, final_mask, threshold=threshold
         )
+        print(len(pred_grasps), pred_grasps.shape, "<= these are the grasps")
+
+        pred_grasps[:, :3, 3] = pred_grasps[:, :3, 3] + translation
 
         n = 0 if pred_success is None else pred_grasps.shape[0]
         print('model pass.', n, 'grasps found.')
+
         return pred_grasps, pred_success
     
 
     def pick(self, obj_id):
-        pred_grasps, pred_success = self.get_grasp(obj_id, threshold=0.8)
+        pred_grasps, pred_success = self.get_grasp(obj_id)
 
         # grasp_idx = random.choice(range(len(grasps)))
         grasp_idx = np.argmax(pred_success)
