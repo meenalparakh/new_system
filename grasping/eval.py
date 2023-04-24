@@ -60,7 +60,7 @@ def cgn_infer(cgn, pcd, obj_mask=None, threshold=0.5):
     n = pcd.shape[0]
     if n > 20000:
         print("Size larger than 20,000, downsampling the pcd")
-        downsample = np.array(random.sample(range(pcd.shape[0]-1), 20000))
+        downsample = np.array(random.sample(range(n), 20000))
     else:
         print("Size smaller than 20,000, oversampling the pcd")
         remaining = 20000 - n
@@ -68,6 +68,8 @@ def cgn_infer(cgn, pcd, obj_mask=None, threshold=0.5):
         other_idx = np.random.randint(0, n, size=remaining)
         downsample = np.concatenate((idx, other_idx))
     pcd = pcd[downsample, :]
+
+    print("Final pcd shape:", pcd.shape)
 
     pcd = torch.Tensor(pcd).to(dtype=torch.float32).to(cgn.device)
     batch = torch.zeros(pcd.shape[0]).to(dtype=torch.int64).to(cgn.device)
@@ -92,6 +94,10 @@ def cgn_infer(cgn, pcd, obj_mask=None, threshold=0.5):
     points = torch.flatten(points, start_dim=0, end_dim=1).detach().cpu().numpy()
 
     threshold = np.max(confidence)*0.9
+
+    print("success mask shape", confidence.shape)
+    print("grasps shape:", pred_grasps.shape)
+    
     success_mask = (confidence > threshold).nonzero()[0]
     if len(success_mask) == 0:
         print('failed to find successful grasps')

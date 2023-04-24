@@ -42,6 +42,7 @@ def get_plan(
     function_name,
     primitives_lst,
     primitives_description,
+    code_rectification=False
 ):
     replacements = {
         "PROMPT": task_prompt,
@@ -71,8 +72,11 @@ def get_plan(
     code_query = replace(TEMPLATE_DICT["code_template_3"], replacements)
     code_str = llm(code_query)
 
-    code_rectify_query = TEMPLATE_DICT["code_rectify_template"]
-    code_rectified = llm(code_rectify_query)
+    if code_rectification:
+        code_rectify_query = TEMPLATE_DICT["code_rectify_template"]
+        code_rectified = llm(code_rectify_query)
+    else:
+        code_rectified = code_str
 
     return task_name, extract_code_from_str(code_rectified, function_name)
 

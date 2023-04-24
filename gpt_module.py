@@ -7,6 +7,7 @@ import os
 import pickle
 import json
 from colorama import Fore
+import time
 
 RESPONSE_DIR = "gpt_responses"
 
@@ -14,6 +15,9 @@ class ChatGPTModule:
     def __init__(self, response_dir=RESPONSE_DIR):
         self.response_dir = response_dir
         os.makedirs(response_dir, exist_ok=True)
+        self.timer = 31
+        self.start_time = 0
+        self.time_limit = 30
 
     def save_cache(self, fname):
         with open(fname, 'w') as f:
@@ -49,10 +53,17 @@ class ChatGPTModule:
             print(Fore.MAGENTA + "Found in cache ...")
             result = self.cache[concatenated_message]
         else:
+            while self.timer < self.time_limit:
+                self.timer = time.time() - self.start_time
+
             response = openai.ChatCompletion.create(
                 model="gpt-3.5-turbo",
                 messages=self.message_lst
             )
+
+            self.start_time = time.time()
+            self.timer = 0
+            
             finish_reason = response["choices"][0]["finish_reason"]
             if finish_reason != "stop":
                 print("warning: the response is truncated")

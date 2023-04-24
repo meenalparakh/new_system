@@ -13,7 +13,7 @@ from scene_description_utils import construct_graph, graph_traversal, text_descr
 from grasping.eval import initialize_net, cgn_infer
 from scipy.spatial.transform import Rotation as R
 from grasp import control_robot
-
+from visualize_pcd import VizServer
 
 OPP_RELATIONS = {"above": "below", "contained_in": "contains"}
 
@@ -65,13 +65,13 @@ def visualize_pcd(xyz, colors=None):
 
 
 class MyRobot(Robot):
-    def __init__(self, gui=False, grasper=False, clip=False):
+    def __init__(self, gui=False, grasper=False, clip=False, meshcat_viz=False):
         super().__init__(
             "franka",
             pb_cfg={"gui": gui},
-            use_arm=False,
-            use_eetool=False,
-            use_base=False,
+            # use_arm=False,
+            # use_eetool=False,
+            # use_base=False,
         )
 
         if grasper:
@@ -85,18 +85,23 @@ class MyRobot(Robot):
             from clip_model import MyCLIP
             self.clip = MyCLIP()
 
+        if meshcat_viz:
+            self.viz = VizServer()
+
     def reset(self, task_name):
-        # success = self.arm.go_home()
-        # if not success:
-        #     log_warn("Robot go_home failed!!!")
+        success = self.arm.go_home()
+        if not success:
+            log_warn("Robot go_home failed!!!")
 
         # setup table
         ori = euler2quat([0, 0, np.pi / 2])
         self.table_id = self.pb_client.load_urdf(
             "table/table.urdf", [0.6, 0, 0.4], ori, scaling=0.9
         )
+
+        print("Table id", self.table_id)
         self.pb_client.changeDynamics(self.table_id, 0, mass=0, lateralFriction=2.0)
-        self.table_bounds = np.array([[0.05, 0.95], [-0.5, 0.5], [0.90, 3.0]])
+        self.table_bounds = np.array([[0.05, 0.95], [-0.5, 0.5], [0.85, 3.0]])
 
         # setup camera
         self._setup_cameras()
@@ -129,7 +134,7 @@ class MyRobot(Robot):
             segs = segs[valid]
 
         return pts, rgb, segs
-    
+
     def _camera_cfgs(self):
         _C = CN()
         _C.ZNEAR = 0.01
@@ -149,6 +154,11 @@ class MyRobot(Robot):
             The two images are concatenated together.
             The returned observation shape is [2H, W, 3].
         """
+
+        all_obj_ids = [v["mask_id"] for k, v in self.sim_dict["object_dicts"].items()]
+        first_obj = min(all_obj_ids)
+        last_obj = max(all_obj_ids)
+
         rgbs = []
         depths = []
         segs = []
@@ -156,11 +166,18 @@ class MyRobot(Robot):
             rgb, depth, seg = cam.get_images(get_rgb=True, get_depth=True, get_seg=True)
             rgbs.append(rgb)
             depths.append(depth)
+
+            seg = seg.astype(int)
+            seg[seg < first_obj] = -1
+            seg[seg > last_obj] = -1
+            # print("unique ids", np.unique(seg))
             segs.append(seg)
 
         # ////////////////////////////////////////////////////////////////////////////
         self.sim_dict["segs"] = segs
         # ////////////////////////////////////////////////////////////////////////////
+
+        # input()
 
         return {"colors": rgbs, "depths": depths}
 
@@ -312,7 +329,7 @@ class MyRobot(Robot):
         # ////////////////////////////////////////////////////////////////
         return segs, image_embeddings
 
-    def get_grasp(self, obj_id, threshold=0.85):
+    def get_grasp(self, obj_id, threshold=0.85, add_floor=None, visualize=False):
         combined_pcds = []
         combined_masks = []
 
@@ -324,13 +341,21 @@ class MyRobot(Robot):
             combined_masks.append(mask)
 
         final_pcd = np.concatenate(combined_pcds, axis=0)
+        final_mask = np.concatenate(combined_masks, axis=0).reshape((-1, 1))
+
+        if add_floor is not None:
+            final_pcd = np.concatenate((final_pcd, add_floor), axis=0)
+            final_mask = np.concatenate(
+                (final_mask, np.zeros((len(add_floor), 1))), axis=0
+            )
+
+        # visualize_pcd(final_pcd)
 
         ht = np.min(final_pcd[:, 2])
         x, y = np.mean(final_pcd[:, :2], axis=0)
 
         translation = np.array([x, y, ht])
         final_pcd = final_pcd - translation
-        final_mask = np.concatenate(combined_masks, axis=0).reshape((-1, 1))
 
         assert len(final_mask) == len(final_pcd)
 
@@ -342,13 +367,19 @@ class MyRobot(Robot):
         pred_grasps[:, :3, 3] = pred_grasps[:, :3, 3] + translation
 
         n = 0 if pred_success is None else pred_grasps.shape[0]
-        print('model pass.', n, 'grasps found.')
+        print("model pass.", n, "grasps found.")
+
+        if visualize:
+            grasp_idx = np.argmax(pred_success)
+            grasp_pose = pred_grasps[grasp_idx: grasp_idx + 1]
+            self.viz.view_grasps(grasp_pose)
 
         return pred_grasps, pred_success
-    
 
-    def pick(self, obj_id):
-        pred_grasps, pred_success = self.get_grasp(obj_id)
+    def pick(self, obj_id, visualize=False):
+        pred_grasps, pred_success = self.get_grasp(
+            obj_id, threshold=0.8, add_floor=self.bg_pcd, visualize=visualize
+        )
 
         # grasp_idx = random.choice(range(len(grasps)))
         grasp_idx = np.argmax(pred_success)
@@ -356,12 +387,10 @@ class MyRobot(Robot):
 
         self.pick_given_pose(grasp_pose)
 
-
     def pick_given_pose(self, pick_pose, translate=0.13):
-
         z_rot = np.eye(4)
         z_rot[2, 3] = translate
-        z_rot[:3, :3] = R.from_euler('z', np.pi/2).as_matrix()
+        z_rot[:3, :3] = R.from_euler("z", np.pi / 2).as_matrix()
         gripper_pose = np.matmul(pick_pose, z_rot)
 
         rotation = gripper_pose[:3, :3]
@@ -370,27 +399,26 @@ class MyRobot(Robot):
         # pick_position[2] = pick_position[2] - 0.10
         pose = (pick_position, rotation, direction_vector)
 
-        control_robot(self, pose, robot_category='franka', control_mode='linear', 
-                            move_up=0.15, linear_offset=-0.022)
+        control_robot(
+            self,
+            pose,
+            robot_category="franka",
+            control_mode="linear",
+            move_up=0.15,
+            linear_offset=-0.01,
+        )
 
         print("Pick completed")
 
-
-    def place(self, position):
-
+    def place(self, obj_id, position):
         if len(position) == 2:
             position = [*position, 0.9]
-
-        # direction = self.arm.get_ee_pose()[2]
-        # pose = (position, None, direction[:3, 2])
-        # control_robot(self, pose, robot_category='franka', control_mode='linear', 
-        #                     move_up=0.15, linear_offset=-0.022)
 
         current_position = self.arm.get_ee_pose()[0]
         direction = np.array(position) - current_position
         direction[2] = 0
         self.arm.move_ee_xyz(direction)
-    
+
         preplace_position = self.arm.get_ee_pose()[0]
         success = True
         while success:
@@ -419,7 +447,7 @@ class MyRobot(Robot):
         std_threshold=0.01,
         label_infos=None,
         visualization=False,
-        process_pcd_fn=None
+        process_pcd_fn=None,
     ):
         pcd_pts = []
         pcd_rgb = []
@@ -427,14 +455,17 @@ class MyRobot(Robot):
         for color, depth, segment, cam in zip(colors, depths, segs, self.cams):
             cam_extr = cam.get_cam_ext()
             pts, rgb = self.get_pcd(
-                cam_ext_mat=cam_extr, rgb_image=color, depth_image=depth, cam=cam,
+                cam_ext_mat=cam_extr,
+                rgb_image=color,
+                depth_image=depth,
+                cam=cam,
             )
 
             _, seg = self.get_pcd(
                 cam_ext_mat=cam_extr,
                 rgb_image=np.repeat(segment[..., None], repeats=3, axis=2),
                 depth_image=depth,
-                cam=cam
+                cam=cam,
             )
 
             if process_pcd_fn is not None:
@@ -480,13 +511,11 @@ class MyRobot(Robot):
 
         start_idx = 0
         for j in range(len(pcd_pts)):
-
             seg = pcd_seg[j][:, 0]
-            unique_ids = list(np.unique(seg.astype(int)))
+            unique_ids = np.unique(seg.astype(int))
             print("unique_ids in first image", unique_ids)
 
-            if 0 in unique_ids:
-                unique_ids.remove(0)
+            unique_ids = unique_ids[unique_ids >= 0]
 
             print("unique_ids in first image", unique_ids)
 
@@ -505,12 +534,12 @@ class MyRobot(Robot):
                 new_uids_count = np.max(unique_ids) + 1
                 break
 
-        for idx in range(start_idx+1, len(pcd_pts)):
+        for idx in range(start_idx + 1, len(pcd_pts)):
             seg = pcd_seg[idx][:, 0]
             unique_ids = np.array(np.unique(seg.astype(int)))
             print("unique_ids in image", idx, unique_ids)
 
-            unique_ids = unique_ids[unique_ids > 0]
+            unique_ids = unique_ids[unique_ids >= 0]
             print("unique_ids in image", idx, unique_ids)
 
             new_dict = {}
@@ -552,6 +581,14 @@ class MyRobot(Robot):
                     new_uids_count += 1
                     objects.update(new_dict)
 
+        extra_pcd = []
+        for idx in range(len(pcd_pts)):
+            seg_mask = pcd_seg[idx][:, 0] < 0
+            extra_pcd.append(pcd_pts[idx][seg_mask])
+        extra_pcd = np.concatenate(extra_pcd, axis=0)
+
+        self.bg_pcd = extra_pcd
+
         return objects
 
     def get_scene_description(self, object_dicts):
@@ -590,3 +627,111 @@ class MyRobot(Robot):
         description = text_description(object_dicts, traversal_order, path, side=side)
 
         return description, object_dicts
+
+    def get_location(self, obj_id):
+
+        obj_pcd = self.object_dicts[obj_id]['pcd']
+
+        position = np.mean(obj_pcd, axis=0)
+        print(f"Getting location for object {obj_id}:", position)
+        return position
+    
+    def find(self, object_name, object_description):
+        print(f"finding object: {object_name}, description: {object_description}")
+        obj_ids = list(self.object_dicts.keys())
+        txts = []
+        n = len(obj_ids)
+        for oid in obj_ids:
+            name = self.object_dicts[oid]["used_name"]
+            descr = self.object_dicts[oid]["desc"]
+            txts.append(name + " that " + descr)
+
+        prompt = object_name + " described by " + object_description
+        txts.append(prompt)
+
+        embeddings = self.clip.get_text_embeddings(txts)
+
+        possibilities = embeddings[:n]
+        mat1 = embeddings[n:]
+
+        prob = mat1 @ possibilities.T
+        idx = np.argmax(prob[0])
+
+        print("Chosen object: ", obj_ids[idx])
+        return obj_ids[idx]
+    
+    def no_action(self):
+        print("Ending ...")
+
+    def get_primitives(self):
+        self.primitives = {
+            "find": {
+                "fn": self.find,
+                "description": """
+find(object_name, object_description)
+    Finds an object with the name `object_name`, and additional information about the object given by `object_description`.
+    Arguments:
+        object_name: str
+            Name of the object to find
+        object_description: str
+            Description of the object to find
+
+    Returns: int
+        object_id , an integer representing the found object
+""",
+            },
+            "pick": {
+                "fn": self.pick,
+                "description": """
+pick(object_id)
+    Picks up an object that `object_id` represents.
+    Arguments:
+        object_id: int
+            Id of the object to pick
+    Returns: None
+""",
+            },
+            "place": {
+                "fn": self.place,
+                "description": """
+place(object_id, position)
+    Moves to the position and places the object `object_id`, at the location given by `position`
+    Arguments:
+        object_id: int
+            Id of the object to place
+        position: 3D array
+            the place location
+    Returns: None
+""",
+            },
+            "get_location": {
+                "fn": self.get_location,
+                "description": """
+get_location(object_id)
+    gives the location of the object `object_id`
+    Arguments:
+        object_id: int
+            Id of the object
+    Returns:
+        position: 3D array
+            the location of the object
+""",
+            },
+            "no_action": {
+                "fn": self.no_action,
+                "description": """
+no_action()
+    The function marks the end of a program.
+    Returns: None
+""",
+            },
+        }
+
+        fn_lst = list(self.primitives.keys())
+        self.primitives_lst = ",".join([f"`{fn_name}`" for fn_name in fn_lst])
+        self.primitives_description = "\n".join(
+            [self.primitives[fn]["description"] for fn in fn_lst]
+        )
+        self.primitives_description = "```\n" + self.primitives_description + "\n```"
+
+        return self.primitives

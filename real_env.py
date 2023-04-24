@@ -311,50 +311,17 @@ class RealRobot(MyRobot):
 
         return segs, image_embeddings
 
-    def find(self, object_name, object_description):
-        print(f"finding object: {object_name}, description: {object_description}")
-
-        obj_ids = list(self.object_dicts.keys())
-
-        txts = []
-        n = len(obj_ids)
-        for oid in obj_ids:
-            name = self.object_dicts[oid]["used_name"]
-            descr = self.object_dicts[oid]["desc"]
-            txts.append(name + " that " + descr)
-
-        prompt = object_name + " described by " + object_description
-        txts.append(prompt)
-
-        embeddings = self.clip.get_text_embeddings(txts)
-
-        possibilities = embeddings[:n]
-        mat1 = embeddings[n:]
-
-        prob = mat1 @ possibilities.T
-        idx = np.argmax(prob[0])
-
-        print("Chosen object: ", obj_ids[idx])
-        return obj_ids[idx]
-
     def pick(self, obj_id):
         print(f"Picking object {obj_id}")
 
     def place(self, obj_id, position):
         print(f"Placing object {obj_id} at {position}")
 
-    def get_location(self, obj_id):
-        print(f"Getting location for object {obj_id}")
-        return np.zeros(3)
-
     def learn_skill(self, skill_name, skill_inputs):
         def random():
             print(f"New skill: {skill_name}")
 
         return random
-
-    def no_action(self):
-        print("Ending ...")
 
     def get_primitives(self):
         self.primitives = {

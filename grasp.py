@@ -74,6 +74,7 @@ def control_robot(robot, pose, robot_category='franka', control_mode='linear', m
         dispatch_control_order(robot_category + ':close')
         dispatch_control_order(robot_category + ':move_xyz', pos=[0, 0, move_up])
 
+
     elif action == "place":
         
         position = pose[0]
