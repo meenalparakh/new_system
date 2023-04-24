@@ -168,6 +168,8 @@ def get_segmentation_mask(predictor, image, bbs, labels, prefix=0):
 
         plt.savefig(sam_predictions_dir + f"/{prefix}_{j}.png")
 
+    seg[seg < 0.5] = -1
+
     return seg, embedding_dict  # results
 
 
@@ -225,6 +227,7 @@ class RealRobot(MyRobot):
         clip=False,
         grasper=False,
         cam_idx=[0, 1, 2, 3],
+        real_robot=False
     ):
         super().__init__(gui, grasper=grasper, clip=clip)
         self.scene_dir = scene_dir
@@ -239,6 +242,21 @@ class RealRobot(MyRobot):
         self.sam_predictor = None
         if sam:
             self.set_sam()
+
+        if real_robot:
+            from move_real_arm import PandaReal
+            self.panda_robot = PandaReal("franka")
+
+    def pick_place_real(self, obj_id, place_position):
+        pred_grasps, pred_success = self.get_grasp(
+            obj_id, threshold=0.8, add_floor=self.bg_pcd, visualize=True
+        )
+        
+        # grasp_idx = random.choice(range(len(grasps)))
+        grasp_idx = np.argmax(pred_success)
+        grasp_pose = pred_grasps[grasp_idx]
+        self.panda_robot.run(grasp_pose, place_position)
+
 
     def set_sam(self):
         from segment_anything import sam_model_registry, SamPredictor

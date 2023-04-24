@@ -12,13 +12,14 @@ if __name__ == "__main__":
     robot = RealRobot(
         gui=False,
         scene_dir=None,
-        realsense_cams=False,
+        realsense_cams=True,
         sam=True,
         clip=True,
-        cam_idx=[0, 1, 3],
+        cam_idx=[0, 1, 2, 3],
     )
 
-    obs = robot.get_obs(source="obs2.pkl")
+    # obs = robot.get_obs(source="obs2.pkl")
+    obs = robot.get_obs(source="realsense")
 
     ###################### combined pcd visualization
     combined_pts, combined_rgb = robot.get_combined_pcd(
@@ -81,6 +82,15 @@ if __name__ == "__main__":
     # //////////////////////////////////////////////////////////////////////////////
     # LLM Planning
     # //////////////////////////////////////////////////////////////////////////////
+
+
+    obj_id = input("obj_id")
+    place_position = input("place position:")
+
+    obj_id = int(obj_id)
+    place_position = [float(k) for k in place_position.split(" ")]
+
+    robot.pick_place_real(obj_id, place_position)
 
     # robot.get_primitives()
     # task_name = "place_mug"

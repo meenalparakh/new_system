@@ -49,52 +49,8 @@ class RealSenseCameras:
         self.pipelines = enable_devices(np.array(serials)[cam_index], ctx, resolution_width, resolution_height, frame_rate)
         self.cam_interface = RealsenseLocal()
 
-    # def get_real_pcd(self):
-    #     pcd_pts = []
-    #     pcd_dict_list = []
-    #     cam_int_list = []
-    #     cam_poses_list = []
-    #     rgb_imgs = []
-    #     depth_imgs = []
-    #     for idx, cam in enumerate(self.cams.cams):
-    #         cam_intrinsics = self.cam_interface.get_intrinsics_mat(self.pipelines[idx])
-    #         rgb, depth = self.cam_interface.get_rgb_and_depth_image(self.pipelines[idx])
-
-    #         cam.cam_int_mat = cam_intrinsics
-    #         cam._init_pers_mat()
-    #         cam_pose_world = cam.cam_ext_mat
-    #         cam_int_list.append(cam_intrinsics)
-    #         cam_poses_list.append(cam_pose_world)
-
-    #         valid = depth < cam.depth_max
-    #         valid = np.logical_and(valid, depth > cam.depth_min)
-    #         depth_valid = copy.deepcopy(depth)
-    #         depth_valid[np.logical_not(valid)] = 0.0 # not exactly sure what to put for invalid depth
-    #         depth_imgs.append(depth_valid)
-
-    #         pcd_cam = cam.get_pcd(in_world=False, filter_depth=False, rgb_image=rgb, depth_image=depth_valid)[0]
-    #         pcd_cam_img = pcd_cam.reshape(depth.shape[0], depth.shape[1], 3)
-    #         pcd_world = transform_pcd(pcd_cam, cam_pose_world)
-    #         pcd_world_img = pcd_world.reshape(depth.shape[0], depth.shape[1], 3)
-    #         pcd_dict = {
-    #             'world': pcd_world,
-    #             'cam': pcd_cam_img,
-    #             'cam_img': pcd_cam,
-    #             'world_img': pcd_world_img,
-    #             'cam_pose_mat': cam_pose_world
-    #         }
-
-    #         pcd_pts.append(pcd_world)
-    #         pcd_dict_list.append(pcd_dict)
-
-    #     pcd_full = np.concatenate(pcd_pts, axis=0)
-    #     return pcd_full
-
     def get_rgb_depth(self):
-        # pcd_pts = []
-        # pcd_dict_list = []
-        cam_int_list = []
-        cam_poses_list = []
+
         rgb_imgs = []
         depth_imgs = []
         configs = []
@@ -105,7 +61,6 @@ class RealSenseCameras:
 
             cam.cam_int_mat = cam_intrinsics
             cam._init_pers_mat()
-            cam_pose_world = cam.cam_ext_mat
 
 
             rgb_imgs.append(rgb)

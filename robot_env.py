@@ -75,7 +75,7 @@ class MyRobot(Robot):
         )
 
         if grasper:
-            self.grasper, _, _ = initialize_net(
+            self.grasper, _, self.grasper_config = initialize_net(
                 config_file="./grasping/model/",
                 load_model=True,
                 save_path="./grasping/checkpoints/current.pth",
