@@ -12,8 +12,13 @@ import time
 RESPONSE_DIR = "gpt_responses"
 
 class ChatGPTModule:
-    def __init__(self, response_dir=RESPONSE_DIR):
+    def __init__(self, response_dir=RESPONSE_DIR, mode="online"):
+
+        '''
+        allowed mode vals: "human", "online"
+        '''
         self.response_dir = response_dir
+        self.mode = mode
         os.makedirs(response_dir, exist_ok=True)
         self.timer = 31
         self.start_time = 0
@@ -56,10 +61,19 @@ class ChatGPTModule:
             while self.timer < self.time_limit:
                 self.timer = time.time() - self.start_time
 
-            response = openai.ChatCompletion.create(
-                model="gpt-3.5-turbo",
-                messages=self.message_lst
-            )
+            if self.mode == "online":
+                response = openai.ChatCompletion.create(
+                    model="gpt-3.5-turbo",
+                    messages=self.message_lst
+                )
+            else:
+                human_response_file = input("fname:")
+
+                with open(human_response_file, 'r') as f:
+                    human_response = f.readlines()
+
+                human_response = ''.join(human_response)
+                response = {"choices": [{"finish_reason": "done", "message": {"content": human_response}}]}
 
             self.start_time = time.time()
             self.timer = 0
