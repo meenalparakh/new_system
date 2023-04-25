@@ -136,3 +136,7 @@ Detic
 obs.pkl
 sam_model
 sam_predictions
+.vscode
+cached_info.pkl
+obs2.pkl
+pts_check.npy

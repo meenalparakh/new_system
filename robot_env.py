@@ -376,6 +376,58 @@ class MyRobot(Robot):
 
         return pred_grasps, pred_success
 
+    def possible_place_positions(self, obs, obj_id):
+        if obs is None:
+            obs = self.get_obs()
+        xyzs, colors, segs = self.get_pointcloud(obs)
+        mask_id = self.object_dicts[obj_id]["mask_id"]
+        valid = (segs[:, 0] != 1) & (segs[:, 0] != mask_id)
+        xyzs = xyzs[valid]
+        colors = colors[valid]
+        segs = segs[valid]
+        colormap, _, segmap = self.get_segmap(None, xyzs=xyzs, colors=colors, segs=segs)
+
+        empty_space = (segmap == self.table_id)
+        cv2_array = (empty_space*255).astype(np.uint8)
+        radius = 50
+        kernel = np.ones((radius, radius), np.uint8)
+        empty_space = cv2.erode(cv2_array, kernel, iterations=1)
+        mask = np.zeros_like(empty_space)
+        mask[radius:-radius, radius:-radius] = 255
+        empty_space = empty_space & mask
+        empty_space = np.where(empty_space > 100)
+
+        # empty_space = np.where(segmap == self.table_id)
+        # print(empty_space)
+        k = min(len(empty_space[0]), 10)
+        random_pts = random.sample(range(len(empty_space[0])), k)
+        rows = empty_space[0][random_pts]
+        cols = empty_space[1][random_pts]
+
+        place_descriptions = {}
+
+        obj_lst = list(self.object_dicts.keys())
+        obj_lst.remove(obj_id)
+
+        for r, c in zip(rows, cols):
+            xyz = utils.pix_to_xyz((c, r), 0, self.bounds, self.pixel_size, skip_height=True)
+            # print("xyz point", xyz[:2])
+            label = get_place_description(self.object_dicts, obj_lst, xyz[:2])
+            if label in place_descriptions:
+                place_descriptions[label].append(xyz[:2])
+            else:
+                place_descriptions[label] = [xyz[:2]]
+
+        for obj_idx in obj_lst:
+            obj_info = self.object_dicts[obj_idx]
+            obj_location = obj_info["object_center"]
+            label = "over the " + obj_info["name"]
+            place_descriptions[label] = [obj_location[:2]]
+
+        self.object_dicts[obj_id]["place_positions"] = place_descriptions
+        return place_descriptions
+
+
     def pick(self, obj_id, visualize=False):
         pred_grasps, pred_success = self.get_grasp(
             obj_id, threshold=0.8, add_floor=self.bg_pcd, visualize=visualize

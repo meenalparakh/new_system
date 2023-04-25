@@ -106,13 +106,7 @@ class PandaReal():
         return jnts                
 
     def get_plan(self, waypoint_list, pcd=None):
-        start_jnts = waypoint_list[0]
-        end_jnts = waypoint_list[1]
         plan = []
-
-        ##############################################################################
-        # should the start and end points be included in plan 
-        ##############################################################################
 
         for i, w in enumerate(waypoint_list[:-1]):
             subplan = self.ik_robot.plan_joint_motion(w, waypoint_list[i+1], pcd=pcd)
