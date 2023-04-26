@@ -6,7 +6,7 @@ from PIL import Image
 class MyCLIP:
     def __init__(self, device=None, model_type="ViT-B/32"):
         # self.is_cuda = is_cuda
-        self.is_cuda = torch.cuda.is_available()
+
         
         print("The following models are available:", clip.available_models())  
         if not (model_type in clip.available_models()):
@@ -15,12 +15,19 @@ class MyCLIP:
         model, preprocess = clip.load("ViT-B/32")
 
         if device is None:
-            is_cuda = torch.cuda.is_available()
-	    self.device = "cuda" if is_cuda else "cpu"
+            self.device = "cuda" if torch.cuda.is_available() else "cpu"
         else:
             self.device = device
 
-        self.model = model.to(self.device).eval()
+        print("CLIP model running on", self.device)
+
+        if self.device == "cuda":
+            self.model = model.cuda().eval()
+
+        else:
+            self.model = model.to(self.device).float().eval()
+
+        # self.model = model.to(self.device).eval()
         self.image_preprocess = preprocess
 
     def get_image_embeddings(self, rgbs):
@@ -32,7 +39,8 @@ class MyCLIP:
             images.append(self.image_preprocess(r))
         image_input = torch.tensor(np.stack(images))
 
-        image_input = image_input.to(self.device)
+        if self.device == "cuda":
+            image_input = image_input.cuda()
         with torch.no_grad():
             image_features = self.model.encode_image(image_input).float()
         image_features /= image_features.norm(dim=-1, keepdim=True)
@@ -40,8 +48,8 @@ class MyCLIP:
 
     def get_text_embeddings(self, texts):
         text_tokens = clip.tokenize(texts)
-        #if self.is_cuda:
-        text_tokens = text_tokens.to(self.device)
+        if self.device == "cuda":
+            text_tokens = text_tokens.cuda()
         with torch.no_grad():
             text_features = self.model.encode_text(text_tokens).float()
         text_features /= text_features.norm(dim=-1, keepdim=True)

@@ -284,6 +284,8 @@ class RealRobot(MyRobot):
         if device is None:
             device = "cuda" if torch.cuda.is_available() else "cpu"
 
+        print("SAM running on device", device)
+
         sam = sam_model_registry[model_type](checkpoint=sam_checkpoint)
         sam.to(device=device)
         self.sam_predictor = SamPredictor(sam)
