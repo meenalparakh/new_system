@@ -25,10 +25,17 @@ Write a python function `TASK_NAME()` using the above API function calls to COMM
   # ////////////////////////////////////////////////////////////////////////////////////////////////////////
 
   "code_rectify_template": \
-"""Change the above code to ensure the following conditions hold:
+"""Change the code to make sure that the following rules are obeyed:
 1. Only picked objects can be placed. 
 2. After every pick action, there should be a corresponding place action for the object, that helps to achieve the task.
 3. There can be no two consecutive pick actions, and similarly no two consecutive place actions. 
 4. The new program should still follow the steps given earlier as closely as possible while taking into account the above requirements.
+""",
+  "continued_tasks": \
+"""SCENE_CHANGES We next want to COMMAND. For this write a python function called `TASK_NAME()` using the functions API given previously. Also make sure the code obeys the rules given earlier. 
+""",
+
+  "verbal_query": \
+"""SCENE_DESCRIPTION\n\nQUERY
 """
 }
