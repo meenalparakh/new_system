@@ -19,7 +19,7 @@ import torch
 subprocess.run(["cp", "demo_detic.py", "Detic/"])
 
 
-def get_detic_predictions(images, vocabulary="lvis", custom_vocabulary=""):
+def get_detic_predictions(images, vocabulary="lvis", custom_vocabulary="", device=None):
     image_dir = "current_images"
     if os.path.exists(image_dir):
         shutil.rmtree(image_dir)
@@ -34,6 +34,8 @@ def get_detic_predictions(images, vocabulary="lvis", custom_vocabulary=""):
 
     print(image_fnames)
 
+    if device is None:
+        device = "cuda" if torch.cuda.is_available() else "cpu" 
     subprocess.run(
         [
             "./run_detect_grasp_scripts.sh",
@@ -41,6 +43,7 @@ def get_detic_predictions(images, vocabulary="lvis", custom_vocabulary=""):
             os.path.abspath(image_dir),
             vocabulary,
             custom_vocabulary,
+            device
         ]
     )
 
@@ -242,9 +245,9 @@ class RealRobot(MyRobot):
         grasper=False,
         cam_idx=[0, 1, 2, 3],
         real_robot=False,
-        model_device=None
+        device=None
     ):
-        super().__init__(gui, grasper=grasper, clip=clip)
+        super().__init__(gui, grasper=grasper, clip=clip, device=device)
         self.scene_dir = scene_dir
         self.table_bounds = np.array([[0.15, 1.0], [-0.5, 0.5], [-0.01, 1.0]])
 
@@ -256,7 +259,7 @@ class RealRobot(MyRobot):
 
         self.sam_predictor = None
         if sam:
-            self.set_sam("cpu")
+            self.set_sam(device)
 
         if real_robot:
             from move_real_arm import PandaReal

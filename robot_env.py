@@ -77,7 +77,7 @@ def visualize_pcd(xyz, colors=None):
 
 
 class MyRobot(Robot):
-    def __init__(self, gui=False, grasper=False, clip=False, meshcat_viz=False):
+    def __init__(self, gui=False, grasper=False, clip=False, meshcat_viz=False, device=None):
         super().__init__(
             "franka",
             pb_cfg={"gui": gui},
@@ -92,10 +92,11 @@ class MyRobot(Robot):
                 load_model=True,
                 save_path="./grasping/checkpoints/current.pth",
                 args=None,
+		device=device
             )
         if clip:
             from clip_model import MyCLIP
-            self.clip = MyCLIP()
+            self.clip = MyCLIP(device=device)
 
         if meshcat_viz:
             self.viz = VizServer()

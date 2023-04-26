@@ -1,22 +1,23 @@
 import meshcat
 import meshcat.geometry as g
 
-# from pyngrok import ngrok
-# http_tunnel = ngrok.connect(meshcat.port(), bind_tls=False)
-# web_url = http_tunnel.public_url
+from pyngrok import ngrok
 
-# set_log_level(prev_log_level)
-# print(f'Meshcat is now available at {web_url}')
 
 
 class VizServer():
 
     def __init__(self, port_vis=6000) -> None:
         zmq_url = f'tcp://127.0.0.1:{port_vis}'
-        self.mc_vis = meshcat.Visualizer(zmq_url=zmq_url).open()
+        self.mc_vis = meshcat.Visualizer(zmq_url=zmq_url)
         self.mc_vis['scene'].delete()
         self.mc_vis['meshcat'].delete()
         self.mc_vis['/'].delete()
+
+        http_tunnel = ngrok.connect(port_vis, bind_tls=False)
+        web_url = http_tunnel.public_url
+
+        print(f'Meshcat is now available at {web_url}')
 
     def view_pcd(self, pts, colors=None, name="scene"):
 
@@ -65,14 +66,16 @@ import argparse
 import numpy as np
 
 if __name__ == "__main__":
-    parser = argparse.ArgumentParser()
-    parser.add_argument("-f", "--fname")
+    # parser = argparse.ArgumentParser()
+    # parser.add_argument("-f", "--fname")
 
-    args = parser.parse_args()
-    fname = args.fname
-    pcd = open3d.io.read_point_cloud(fname)
+    # args = parser.parse_args()
+    # fname = args.fname
+    # pcd = open3d.io.read_point_cloud(fname)
 
-    pts = np.asarray(pcd.points)
+    # pts = np.asarray(pcd.points)
+
+    pts = np.random.rand(1000, 3)
 
     vis = VizServer()
     vis.view_pcd(pts)

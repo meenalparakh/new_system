@@ -17,6 +17,7 @@ if __name__ == "__main__":
         clip=True,
         grasper=True,
         cam_idx=[0, 1, 3],
+	device="cpu"
     )
 
     # obs = robot.get_obs(source="obs2.pkl")

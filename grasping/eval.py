@@ -35,11 +35,13 @@ def obtain_pcd_n_mask(scene_dir, obj_id):
         mask.append(mask_)
     return xyz, mask, obj_id
 
-def initialize_net(config_file, load_model, save_path, args):
+def initialize_net(config_file, load_model, save_path, args, device=None):
     print('initializing net')
     torch.cuda.empty_cache()
     config_dict = config_utils.load_config(config_file)
-    device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
+    if device is None:
+        device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
+
     model = ContactNet(config_dict, device).to(device)
     optimizer = torch.optim.Adam(model.parameters(), lr=0.001)
     if load_model==True:

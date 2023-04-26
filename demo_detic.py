@@ -22,9 +22,9 @@ Args = namedtuple("Args", ["vocabulary", "custom_vocabulary"])
 # args_custom = Args(vocabulary="custom", custom_vocabulary=["bowl", "mug", "shelf", "cardboard_box"])
 
 
-def setup_cfg():
+def setup_cfg(device):
     cfg = get_cfg()
-    # cfg.MODEL.DEVICE="cpu"
+    cfg.MODEL.DEVICE=device
     add_centernet_config(cfg)
     add_detic_config(cfg)
     cfg.merge_from_file("configs/Detic_LCOCOI21k_CLIP_SwinB_896b32_4x_ft4x_max-size.yaml")
@@ -38,8 +38,8 @@ def setup_cfg():
     cfg.freeze()
     return cfg
 
-def get_predictions(rgbs, _args):
-    cfg = setup_cfg()
+def get_predictions(rgbs, _args, device):
+    cfg = setup_cfg(device)
     demo = VisualizationDemo(cfg, _args)
 
     pred_lst = []
@@ -70,8 +70,10 @@ if __name__ == "__main__":
     parser.add_argument("--image-dir")
     parser.add_argument("--vocabulary")
     parser.add_argument("--custom-vocabulary")
+    parser.add_argument("--device")
     args = parser.parse_args()
     
+    print(args.device, "<= detectron device")
     vocab_args = Args(vocabulary=args.vocabulary, custom_vocabulary=args.custom_vocabulary)
 
     rgbs = []
@@ -85,7 +87,7 @@ if __name__ == "__main__":
             rgb = cv2.imread(os.path.join(args.image_dir, f))
             rgbs.append(rgb)
 
-    preds_lst, names = get_predictions(rgbs, vocab_args)
+    preds_lst, names = get_predictions(rgbs, vocab_args, args.device)
 
     info_dict = {tmp[idx]: preds_lst[idx] for idx in range(len(tmp))}
 
