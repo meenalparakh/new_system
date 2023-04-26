@@ -1,6 +1,14 @@
 import meshcat
 import meshcat.geometry as g
 
+# from pyngrok import ngrok
+# http_tunnel = ngrok.connect(meshcat.port(), bind_tls=False)
+# web_url = http_tunnel.public_url
+
+# set_log_level(prev_log_level)
+# print(f'Meshcat is now available at {web_url}')
+
+
 class VizServer():
 
     def __init__(self, port_vis=6000) -> None:

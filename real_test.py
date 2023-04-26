@@ -12,17 +12,19 @@ if __name__ == "__main__":
     robot = RealRobot(
         gui=False,
         scene_dir=None,
-        realsense_cams=False,
+        realsense_cams=True,
         sam=True,
         clip=True,
+        grasper=True,
         cam_idx=[0, 1, 3],
     )
 
-    obs = robot.get_obs(source="obs2.pkl")
+    # obs = robot.get_obs(source="obs2.pkl")
+    obs = robot.get_obs(source="realsense")
 
     ###################### combined pcd visualization
     combined_pts, combined_rgb = robot.get_combined_pcd(
-        obs["colors"], obs["depths"], idx=[0, 1, 3]
+        obs["colors"], obs["depths"], idx=[0, 1, 2, 3]
     )
     viz = VizServer()
     viz.view_pcd(combined_pts, combined_rgb)
@@ -32,14 +34,14 @@ if __name__ == "__main__":
         obs["depths"],
         robot.clip,
         vocabulary="custom",
-        custom_vocabulary="tray,mug",
+        custom_vocabulary="tray,bowl,mug",
     )
 
-    with open("cached_info.pkl", 'wb') as f:
-        pickle.dump([segs, info_dict], f)
+    # with open("cached_info.pkl", 'wb') as f:
+    #     pickle.dump([segs, info_dict], f)
 
-    with open("cached_info.pkl", 'rb') as f:
-        segs, info_dict = pickle.load(f)
+    # with open("cached_info.pkl", 'rb') as f:
+    #     segs, info_dict = pickle.load(f)
 
 
     object_dicts = robot.get_segmented_pcd(
@@ -51,7 +53,10 @@ if __name__ == "__main__":
         label_infos=info_dict,
         visualization=True,
         process_pcd_fn=robot.crop_pcd,
+        outlier_removal=True
     )
+
+    # input("press enter to continue")
 
     description, object_dicts = robot.get_scene_description(object_dicts)
 
@@ -75,8 +80,35 @@ if __name__ == "__main__":
         pcds.append(pcd)
         colors.append(color)
 
-    pcds = np.vstack(pcds); colors = np.vstack(colors)
-    viz.view_pcd(pcds, colors)
+    # pcds = np.vstack(pcds); colors = np.vstack(colors)
+    viz.view_pcd(robot.bg_pcd, name="bg")
+
+
+    # # //////////////////////////////////////////////////////////////////////////////
+    # # Grasps
+    # # //////////////////////////////////////////////////////////////////////////////
+
+    all_grasps = []
+    all_scores = []
+    for obj_id in robot.object_dicts:
+        grasps, scores = robot.get_grasp(
+            obj_id, threshold=0.85, add_floor=robot.bg_pcd
+        )
+
+        if scores is None:
+            print("No grasps to show.")
+
+        else:
+            all_grasps.append(grasps)
+            all_scores.append(scores)
+            best_id = np.argmax(scores)
+            chosen_grasp = grasps[best_id : best_id + 1]
+            # chosen_grasp = grasps
+            viz.view_grasps(
+                chosen_grasp,
+                name=robot.object_dicts[obj_id]["used_name"].replace(" ", "_"),
+                freq=1,
+            )
 
     # //////////////////////////////////////////////////////////////////////////////
     # LLM Planning

@@ -15,6 +15,7 @@ from scipy.spatial.transform import Rotation as R
 from grasp import control_robot
 from visualize_pcd import VizServer
 
+
 OPP_RELATIONS = {"above": "below", "contained_in": "contains"}
 
 
@@ -26,6 +27,17 @@ def print_object_dicts(object_dict, ks=["label", "relation", "desc", "used_name"
                 print(f"    {k}: {v}")
         print()
 
+def clean_object_pcds(object_dicts):
+
+    for obj_id in object_dicts:
+        pcd = object_dicts[obj_id]["pcd"]
+        pointcloud = open3d.geometry.PointCloud(open3d.utility.Vector3dVector(pcd))
+        downsampled = pointcloud.voxel_down_sample(voxel_size=0.001)
+        pointcloud, _ = downsampled.remove_statistical_outlier(nb_neighbors=20, std_ratio=1.0)
+
+        object_dicts[obj_id]["pcd"] = np.asarray(pointcloud.points)
+
+    return object_dicts
 
 def get_bb(mask):
     row_projection = np.sum(mask, axis=1)
@@ -376,18 +388,68 @@ class MyRobot(Robot):
 
         return pred_grasps, pred_success
 
-    def possible_place_positions(self, obs, obj_id):
-        if obs is None:
-            obs = self.get_obs()
+    def get_segmap(self, xyzs=None, segs=None, pixel_size=0.003125):
+        # hmap, segmap = utils.get_heightmap(xyzs, segs, self.table_bounds, pixel_size)
+
+        bounds = self.table_bounds
+        width = int(np.round((bounds[0, 1] - bounds[0, 0]) / pixel_size))
+        height = int(np.round((bounds[1, 1] - bounds[1, 0]) / pixel_size))
+        heightmap = np.zeros((height, width), dtype=np.float32)
+
+        if (segs.shape[-1] != 1):
+            segs = segs[..., None]
+
+        colormap = np.zeros((height, width, segs.shape[-1]), dtype=np.uint8)
+
+        # Filter out 3D points that are outside of the predefined bounds.
+        ix = (points[Ellipsis, 0] >= bounds[0, 0]) & (points[Ellipsis, 0] < bounds[0, 1])
+        iy = (points[Ellipsis, 1] >= bounds[1, 0]) & (points[Ellipsis, 1] < bounds[1, 1])
+        iz = (points[Ellipsis, 2] >= bounds[2, 0]) & (points[Ellipsis, 2] < bounds[2, 1])
+        valid = ix & iy & iz
+        points = points[valid]
+        segs = segs[valid]
+
+        # Sort 3D points by z-value, which works with array assignment to simulate
+        # z-buffering for rendering the heightmap image.
+        iz = np.argsort(points[:, -1])
+        points, segs = points[iz], segs[iz]
+        px = np.int32(np.floor((points[:, 0] - bounds[0, 0]) / pixel_size))
+        py = np.int32(np.floor((points[:, 1] - bounds[1, 0]) / pixel_size))
+        px = np.clip(px, 0, width - 1)
+        py = np.clip(py, 0, height - 1)
+        heightmap[py, px] = points[:, 2] - bounds[2, 0]
+        for c in range(colors.shape[-1]):
+            segmap[py, px, c] = segs[:, c]
+    
+        hmap = hmap.T
+        segmap = segmap[:,:,0].T
+        return hmap, segmap
+
+    def possible_place_positions(self, obj_id):
+        
+
         xyzs, colors, segs = self.get_pointcloud(obs)
         mask_id = self.object_dicts[obj_id]["mask_id"]
         valid = (segs[:, 0] != 1) & (segs[:, 0] != mask_id)
         xyzs = xyzs[valid]
         colors = colors[valid]
         segs = segs[valid]
-        colormap, _, segmap = self.get_segmap(None, xyzs=xyzs, colors=colors, segs=segs)
 
-        empty_space = (segmap == self.table_id)
+        xyzs = []
+        for oid in self.object_dicts:
+            if obj_id == oid:
+                continue
+
+            pcd = self.object_dicts[oid]["pcd"]
+            xyzs.append(pcd)
+    
+        xyzs = np.concatenate(xyzs, axis=0)
+        segs = np.ones((len(xyzs), 1))
+            
+
+        _, _, segmap = self.get_segmap(xyzs=xyzs, segs=segs)
+        
+        empty_space = (segmap == 0)
         cv2_array = (empty_space*255).astype(np.uint8)
         radius = 50
         kernel = np.ones((radius, radius), np.uint8)
@@ -500,6 +562,7 @@ class MyRobot(Robot):
         label_infos=None,
         visualization=False,
         process_pcd_fn=None,
+        outlier_removal=False
     ):
         pcd_pts = []
         pcd_rgb = []
@@ -526,6 +589,11 @@ class MyRobot(Robot):
             pcd_pts.append(pts)
             pcd_rgb.append(rgb)
             pcd_seg.append(seg)
+
+            # valid = pts[:, 2] > remove_floor_ht
+            # pcd_pts.append(pts[valid])
+            # pcd_rgb.append(rgb[valid])
+            # pcd_seg.append(seg[valid])
 
             # valid = pts[:, 2] > remove_floor_ht
             # pcd_pts.append(pts[valid])
@@ -569,7 +637,7 @@ class MyRobot(Robot):
 
             unique_ids = unique_ids[unique_ids >= 0]
 
-            print("unique_ids in first image", unique_ids)
+            # print("unique_ids in first image", unique_ids)
 
             if len(unique_ids) > 0:
                 start_idx = j
@@ -586,17 +654,21 @@ class MyRobot(Robot):
                 new_uids_count = np.max(unique_ids) + 1
                 break
 
+        print("labels added: ", [i["label"] for _, i in objects.items()])
+
         for idx in range(start_idx + 1, len(pcd_pts)):
             seg = pcd_seg[idx][:, 0]
             unique_ids = np.array(np.unique(seg.astype(int)))
             print("unique_ids in image", idx, unique_ids)
 
             unique_ids = unique_ids[unique_ids >= 0]
-            print("unique_ids in image", idx, unique_ids)
+            # print("unique_ids in image", idx, unique_ids)
 
             new_dict = {}
             for uid in unique_ids:
-                print(uid, label_infos[idx][uid]["label"])
+                l = label_infos[idx][uid]["label"]
+
+                print(uid, l)
                 valid = seg == uid
                 new_pcd = pcd_pts[idx][valid]
                 new_rgb = pcd_rgb[idx][valid]
@@ -610,9 +682,13 @@ class MyRobot(Robot):
 
                 print(diffs)
 
+
+
                 min_diff = np.min(diffs)
                 if min_diff < std_threshold:
-                    print("min_diff less than 2 cm, updating pcd")
+                    print("min_diff less than 2 cm, updating pcd with label:", l)
+
+                    l = label_infos[idx][uid]["label"]
                     obj_id = obj_lst[np.argmin(diffs)]
                     p = objects[obj_id]["pcd"]
                     r = objects[obj_id]["rgb"]
@@ -620,14 +696,15 @@ class MyRobot(Robot):
                     objects[obj_id]["rgb"] = np.vstack((r, new_rgb))
 
                     # print_object_dicts(objects)
-                    objects[obj_id]["label"].append(label_infos[idx][uid]["label"])
+                    objects[obj_id]["label"].append(l)
                     objects[obj_id]["embed"].append(label_infos[idx][uid]["embedding"])
 
                 else:
+                    print("min diff more than 2, adding as new pcd:", l)
                     new_dict[new_uids_count] = {
                         "pcd": new_pcd,
                         "rgb": new_rgb,
-                        "label": [label_infos[idx][uid]["label"]],
+                        "label": [l],
                         "embed": [label_infos[idx][uid]["embedding"]],
                     }
                     new_uids_count += 1
@@ -640,6 +717,9 @@ class MyRobot(Robot):
         extra_pcd = np.concatenate(extra_pcd, axis=0)
 
         self.bg_pcd = extra_pcd
+
+        if outlier_removal:
+            objects = clean_object_pcds(objects)
 
         return objects
 

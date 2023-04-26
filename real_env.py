@@ -70,6 +70,7 @@ def get_bb_labels(pred, names):
     instances = pred["instances"]
     pred_masks = instances.pred_masks
     pred_boxes = instances.pred_boxes.tensor.cpu().numpy()
+    print(pred_boxes, "predictions coming from detic")
     pred_classes = instances.pred_classes
     pred_scores = instances.scores
     pred_labels = [names[idx] for idx in pred_classes]
@@ -118,7 +119,7 @@ def show_box(box, ax):
     )
 
 
-def get_segmentation_mask(predictor, image, bbs, labels, prefix=0):
+def get_segmentation_mask(predictor, image, depth, bbs, labels, prefix=0, depth_max=2.0):
     """
     for each bb in the image, get the segmentation mask, using SAM
 
@@ -142,20 +143,33 @@ def get_segmentation_mask(predictor, image, bbs, labels, prefix=0):
 
     results = []
     for j in range(len(bbs)):
-        masks, scores, logits = predictor.predict(box=bbs[j], multimask_output=False)
-        mask = masks[0]
-
-        r1, c1, r2, c2 = bbs[j]
+        c1, r1, c2, r2 = bbs[j]
         margin = 1
         r1 = max(int(r1 - margin), 0)
         r2 = min(int(r2 + margin), H - 1)
         c1 = max(int(c1 - margin), 0)
         c2 = min(int(c2 + margin), W - 1)
+        
+        depth_crop = depth[r1: r2 + 1, c1: c2 +1]
+        closest_pt = np.min(depth_crop)
+        if closest_pt > depth_max:
+            print("the closest pt in the crop is at", closest_pt, "while max allowed is at", depth_max)
+            continue
 
-        print("crop dims", r1, c1, r2, c2)
+        masks, scores, logits = predictor.predict(box=bbs[j], multimask_output=False)
+        mask = masks[0]
+
+        kerne_size = 20
+        mask = cv2.erode(np.copy(mask*255).astype(np.uint8), kernel=np.ones((kerne_size, kerne_size), dtype=np.uint8))
+        mask = (mask > 240)
+
+
+        print("crop dims", r1, c1, r2, c2, "label", labels[j])
         crop = image[r1 : r2 + 1, c1 : c2 + 1, :]
 
         seg[mask > 0.5] = j + 1
+        
+        cv2.imwrite(os.path.join(sam_predictions_dir, f"crop_{j}_{labels[j]}.png"), crop)
         embedding_dict[j + 1] = {"label": labels[j], "crop": crop}
 
         results.append(mask)
@@ -227,7 +241,8 @@ class RealRobot(MyRobot):
         clip=False,
         grasper=False,
         cam_idx=[0, 1, 2, 3],
-        real_robot=False
+        real_robot=False,
+        model_device=None
     ):
         super().__init__(gui, grasper=grasper, clip=clip)
         self.scene_dir = scene_dir
@@ -241,7 +256,7 @@ class RealRobot(MyRobot):
 
         self.sam_predictor = None
         if sam:
-            self.set_sam()
+            self.set_sam("cpu")
 
         if real_robot:
             from move_real_arm import PandaReal
@@ -258,12 +273,13 @@ class RealRobot(MyRobot):
         self.panda_robot.run(grasp_pose, place_position)
 
 
-    def set_sam(self):
+    def set_sam(self, device=None):
         from segment_anything import sam_model_registry, SamPredictor
 
         sam_checkpoint = "sam_model/sam_vit_h_4b8939.pth"
         model_type = "vit_h"
-        device = "cuda" if torch.cuda.is_available() else "cpu"
+        if device is None:
+            device = "cuda" if torch.cuda.is_available() else "cpu"
 
         sam = sam_model_registry[model_type](checkpoint=sam_checkpoint)
         sam.to(device=device)
@@ -319,8 +335,9 @@ class RealRobot(MyRobot):
         for idx, rgb in enumerate(colors):
             print("Obtaining segmentation mask")
             pred_boxes, pred_labels = get_bb_labels(pred_lst[idx], names)
+
             seg, embedding_dict = get_segmentation_mask(
-                self.sam_predictor, rgb, pred_boxes, pred_labels, prefix=idx
+                self.sam_predictor, rgb, depths[idx], pred_boxes, pred_labels, prefix=idx
             )
             embedding_dict = get_clip_embeddings(embedding_dict, clip_)
 
