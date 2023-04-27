@@ -39,6 +39,8 @@ def setup_cfg(device):
     return cfg
 
 def get_predictions(rgbs, _args, device):
+
+    print("Detic running on device", device)
     cfg = setup_cfg(device)
     demo = VisualizationDemo(cfg, _args)
 

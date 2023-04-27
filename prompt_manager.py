@@ -81,6 +81,82 @@ def get_plan(
     return task_name, extract_code_from_str(code_rectified, function_name)
 
 
+
+def get_plan_loop(
+    scene_description,
+    task_prompt,
+    llm,
+    function_name,
+    primitives_lst,
+    primitives_description,
+    code_rectification=False, 
+    first_run=True,
+    verbal_query=False,
+    ask_plan=False
+):
+
+    if not verbal_query:
+
+        replacements = {
+            "PROMPT": task_prompt,
+            "SCENE_DESCRIPTION": scene_description,
+            "TASK_NAME": function_name,
+            "PRIMITIVES_LST": primitives_lst,
+            "PRIMITIVES_DESCRIPTION": primitives_description,
+        }
+
+        command_query = TEMPLATE_DICT["command_template"].replace(
+            "PROMPT", replacements["PROMPT"]
+        )
+        command = llm(command_query)
+        command = command.replace('"', "")
+
+        replacements["COMMAND"] = command.lower()[:-1]
+
+
+        if first_run:
+
+            plan_query = TEMPLATE_DICT["plan_template"].replace(
+                "SCENE_DESCRIPTION", scene_description
+            )
+            plan_query = plan_query.replace("COMMAND", command.lower())
+            plan = llm(plan_query)
+
+            task_name = function_name
+            print("function name: ", task_name)
+
+            code_query = replace(TEMPLATE_DICT["code_template_3"], replacements)
+            code_str = llm(code_query)
+
+            if code_rectification:
+                code_rectify_query = TEMPLATE_DICT["code_rectify_template"]
+                code_rectified = llm(code_rectify_query)
+            else:
+                code_rectified = code_str
+
+            return task_name, extract_code_from_str(code_rectified, function_name)
+
+        else:
+
+            continued_code_query = replace(TEMPLATE_DICT["continued_tasks"], {
+                "SCENE_CHANGES": replacements["SCENE_DESCRIPTION"],
+                "COMMAND": replacements["COMMAND"],
+                "TASK_NAME": replacements["TASK_NAME"],
+            })
+            continued_code = llm(continued_code_query)
+
+            return function_name, extract_code_from_str(continued_code, function_name)
+
+        
+    elif verbal_query:
+        
+        verbal_query_template = TEMPLATE_DICT["verbal_query"].replace("SCENE_DESCRIPTION", scene_description)
+        verbal_query_template = verbal_query_template.replace("QUERY", task_prompt)
+
+        response = llm(verbal_query_template)
+        return response
+
+
 def execute_plan(robot, task_name, code_rectified):
     primitives = robot.get_primitives()
     context_str = ""

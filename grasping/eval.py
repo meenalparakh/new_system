@@ -42,6 +42,8 @@ def initialize_net(config_file, load_model, save_path, args, device=None):
     if device is None:
         device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
 
+    print("Grasping running on device", device)
+
     model = ContactNet(config_dict, device).to(device)
     optimizer = torch.optim.Adam(model.parameters(), lr=0.001)
     if load_model==True:

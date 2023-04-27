@@ -12,7 +12,7 @@ if __name__ == "__main__":
     robot = RealRobot(
         gui=False,
         scene_dir=None,
-        realsense_cams=True,
+        realsense_cams=False,
         sam=True,
         clip=True,
         grasper=True,
@@ -20,8 +20,8 @@ if __name__ == "__main__":
 	device="cpu"
     )
 
-    # obs = robot.get_obs(source="obs2.pkl")
-    obs = robot.get_obs(source="realsense")
+    obs = robot.get_obs(source="obs2.pkl")
+    # obs = robot.get_obs(source="realsense")
 
     ###################### combined pcd visualization
     combined_pts, combined_rgb = robot.get_combined_pcd(
