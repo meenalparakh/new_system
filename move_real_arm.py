@@ -1,17 +1,74 @@
-from real_env import RealRobot
-from robot_validate import PandaReal
 import numpy as np
 from scipy.spatial.transform import Rotation as R
 import copy
 import time
 
-######################################################################## 
-from franka_interface import ArmInterface
-# from real_world_interface import WorldInterface
-from franka_ik import FrankaIK
-# from evaluation.collision_checker import PointCollision
-# what is self.ik_robot
-########################################################################
+def pick_place_plan(grasp, end_grasp):
+    '''
+    input:
+        grasp - a single 4x4 pose of end effector
+        current_joints - current pose of the robot
+    output:
+        joint trajectory for entire motion plan (including pre-grasp pose)
+    '''
+    # self.reset_joints = list(self.panda.joint_angles().values())
+    # rotate grasp by pi/2 about the z axis (urdf fix)
+    g_list = [grasp, end_grasp]
+    fixed_grasps = []
+    for g in g_list:
+        #g = self.offset_grasp(g, 0.105)
+        fixed_grasps.append(rotate_grasp(g, np.pi/2))
+
+    grasp = fixed_grasps[0]
+    end_grasp = fixed_grasps[1]
+    pose = pose2tuple(grasp)
+    # sol_jnts = list(self.get_ik(pose))
+
+    pre_grasp = offset_grasp(grasp, 0.1)
+    pre_place_grasp = offset_grasp(end_grasp, 0.1)
+    
+    lift_grasp = copy.deepcopy(grasp)
+    lift_grasp[2, 3] += 0.2            
+    
+    pre_pose = pose2tuple(pre_grasp)
+    lift_pose = pose2tuple(lift_grasp)
+    pre_place_pose = pose2tuple(pre_place_grasp)
+    end_pose = pose2tuple(end_grasp)
+    
+    pose_lst = [
+        pre_pose, 
+        pose,
+        lift_pose,
+        end_pose,
+        pre_place_pose
+    ]
+
+    return pose_lst
+
+def pick_plan(grasp):
+
+    grasp = rotate_grasp(grasp, np.pi/2)
+    pose = pose2tuple(grasp)
+    # sol_jnts = list(self.get_ik(pose))
+
+    pre_grasp = offset_grasp(grasp, 0.1)
+    
+    lift_grasp = copy.deepcopy(grasp)
+    lift_grasp[2, 3] += 0.2            
+    
+    pre_pose = pose2tuple(pre_grasp)
+    lift_pose = pose2tuple(lift_grasp)
+
+    return [pre_pose, pose, lift_pose]
+
+def place_plan(end_grasp):
+    end_grasp = rotate_grasp(end_grasp, np.pi/2)
+    end_pose = pose2tuple(end_grasp)
+    pre_place_grasp = offset_grasp(end_grasp, 0.1)
+    pre_place_pose = pose2tuple(pre_place_grasp)
+
+    return [end_pose, pre_place_pose]
+
 
 def offset_grasp(grasp, dist):
     offset = np.eye(4)
@@ -38,6 +95,12 @@ def pose2tuple(pose):
 
 class PandaReal():
     def __init__(self, robot='franka', viz=True):
+
+        ######################################################################## 
+        from franka_interface import ArmInterface
+        from franka_ik import FrankaIK
+        ########################################################################
+
 
         self.panda = ArmInterface()
         self.panda.set_joint_position_speed(3)
@@ -156,4 +219,66 @@ class PandaReal():
         ############################################################################
 
         success = self.execute(plan)
-    
+
+
+from polymetis import GripperInterface, RobotInterface
+from real_robot_polymetis.franka_ik import FrankaIK
+from real_robot_polymetis.traj_util import PolymetisTrajectoryUtil
+from real_robot_polymetis.plan_exec_util import PlanningHelper
+
+from airobot import log_info, log_warn, log_debug, log_critical, set_log_level
+
+
+class PandaRealPolymetis():
+    def __init__(self, robot='franka', viz=None):
+        
+        self.mc_vis = viz
+        self.franka_ip = "173.16.0.1" 
+
+        self.panda = RobotInterface(ip_address=self.franka_ip)
+
+        self.ik_helper = FrankaIK(gui=True, base_pos=[0, 0, 0], occnet=False, robotiq=(self.args.gripper_type=='2f140'), mc_vis=self.mc_vis)
+        # self.world = WorldInterface(viz)
+
+        self.robot_name = robot
+
+        self.gripper = GripperInterface(ip_address=self.franka_ip)
+
+        traj_helper = PolymetisTrajectoryUtil(robot=self.panda)
+        planning = PlanningHelper(
+            mc_vis=self.mc_vis,
+            robot=self.panda,
+            gripper=self.gripper,
+            ik_helper=self.ik_helper,
+            traj_helper=traj_helper,
+            # tmp_obstacle_dir=tmp_obstacle_dir
+        )
+
+        gripper_speed = planning.gripper_speed
+        gripper_force = 40.0
+        gripper_open_pos = 0.0 if self.args.gripper_type == 'panda' else self.gripper.get_state().max_width
+        default_2f140_open_width = 0
+
+        print(gripper_speed, " <= gripper speed")
+
+        planning.set_gripper_speed(gripper_speed)
+        planning.set_gripper_force(gripper_force)
+        planning.set_gripper_open_pos(gripper_open_pos)
+        planning.gripper_open()
+
+        self.planning = planning
+
+    def run(self, pick_pose, place_position):
+
+        pick_pose = rotate_grasp(pick_pose, np.pi/2)
+
+        place_pose = np.copy(pick_pose)
+        place_pose[:3, 3] = place_position
+
+        place_offset = np.eye(4)
+        place_offset[2, 3] = -0.10
+
+        self.planning.plan_full_path_with_grasp(pick_pose, place_pose, place_offset)
+
+
+

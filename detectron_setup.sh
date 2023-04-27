@@ -17,3 +17,6 @@ pip install 'git+https://github.com/facebookresearch/segment-anything.git'
 mkdir sam_model
 cd sam_model
 wget https://dl.fbaipublicfiles.com/segment_anything/sam_vit_h_4b8939.pth
+
+cd ../
+git clone --recurse-submodules git@github.com:pantor/frankx.git

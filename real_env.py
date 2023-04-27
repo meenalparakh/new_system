@@ -207,13 +207,6 @@ def get_clip_embeddings(d, clip_):
     return d
 
 
-def find_object(text_prompt, avg_obj_embeddings):
-    """
-    returns the object index in the obj_embeddings that best match the
-    text_prompt
-    """
-    pass
-
 
 class Camera:
     def __init__(self, cam_extr=None, cam_intr=None, H=None, W=None):
@@ -244,7 +237,8 @@ class RealRobot(MyRobot):
         clip=False,
         grasper=False,
         cam_idx=[0, 1, 2, 3],
-        real_robot=False,
+        real_robot_airobot=False,
+        real_robot_polymetis=False,
         device=None
     ):
         super().__init__(gui, grasper=grasper, clip=clip, device=device)
@@ -261,9 +255,13 @@ class RealRobot(MyRobot):
         if sam:
             self.set_sam(device)
 
-        if real_robot:
+        if real_robot_airobot:
             from move_real_arm import PandaReal
             self.panda_robot = PandaReal("franka")
+
+        if real_robot_polymetis:
+            from move_real_arm import PandaRealPolymetis
+            self.panda_robot = PandaRealPolymetis("franka")
 
     def pick_place_real(self, obj_id, place_position):
         pred_grasps, pred_success = self.get_grasp(
