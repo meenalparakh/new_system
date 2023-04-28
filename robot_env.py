@@ -15,6 +15,7 @@ from scipy.spatial.transform import Rotation as R
 from grasp import control_robot
 from visualize_pcd import VizServer
 
+from skill_learner import ask_for_skill
 
 OPP_RELATIONS = {"above": "below", "contained_in": "contains"}
 
@@ -27,17 +28,20 @@ def print_object_dicts(object_dict, ks=["label", "relation", "desc", "used_name"
                 print(f"    {k}: {v}")
         print()
 
-def clean_object_pcds(object_dicts):
 
+def clean_object_pcds(object_dicts):
     for obj_id in object_dicts:
         pcd = object_dicts[obj_id]["pcd"]
         pointcloud = open3d.geometry.PointCloud(open3d.utility.Vector3dVector(pcd))
         downsampled = pointcloud.voxel_down_sample(voxel_size=0.001)
-        pointcloud, _ = downsampled.remove_statistical_outlier(nb_neighbors=20, std_ratio=1.0)
+        pointcloud, _ = downsampled.remove_statistical_outlier(
+            nb_neighbors=20, std_ratio=1.0
+        )
 
         object_dicts[obj_id]["pcd"] = np.asarray(pointcloud.points)
 
     return object_dicts
+
 
 def get_bb(mask):
     row_projection = np.sum(mask, axis=1)
@@ -77,7 +81,15 @@ def visualize_pcd(xyz, colors=None):
 
 
 class MyRobot(Robot):
-    def __init__(self, gui=False, grasper=False, clip=False, meshcat_viz=False, device=None):
+    def __init__(
+        self,
+        gui=False,
+        grasper=False,
+        clip=False,
+        meshcat_viz=False,
+        device=None,
+        skill_learner=False,
+    ):
         super().__init__(
             "franka",
             pb_cfg={"gui": gui},
@@ -92,14 +104,17 @@ class MyRobot(Robot):
                 load_model=True,
                 save_path="./grasping/checkpoints/current.pth",
                 args=None,
-		device=device
+                device=device,
             )
         if clip:
             from clip_model import MyCLIP
+
             self.clip = MyCLIP(device=device)
 
         if meshcat_viz:
             self.viz = VizServer()
+
+        self.skill_learner = skill_learner
 
     def reset(self, task_name):
         success = self.arm.go_home()
@@ -384,7 +399,7 @@ class MyRobot(Robot):
 
         if visualize:
             grasp_idx = np.argmax(pred_success)
-            grasp_pose = pred_grasps[grasp_idx: grasp_idx + 1]
+            grasp_pose = pred_grasps[grasp_idx : grasp_idx + 1]
             self.viz.view_grasps(grasp_pose)
 
         return pred_grasps, pred_success
@@ -397,15 +412,21 @@ class MyRobot(Robot):
         height = int(np.round((bounds[1, 1] - bounds[1, 0]) / pixel_size))
         heightmap = np.zeros((height, width), dtype=np.float32)
 
-        if (segs.shape[-1] != 1):
+        if segs.shape[-1] != 1:
             segs = segs[..., None]
 
-        colormap = np.zeros((height, width, segs.shape[-1]), dtype=np.uint8)
+        segmap = np.zeros((height, width, segs.shape[-1]), dtype=np.uint8)
 
         # Filter out 3D points that are outside of the predefined bounds.
-        ix = (points[Ellipsis, 0] >= bounds[0, 0]) & (points[Ellipsis, 0] < bounds[0, 1])
-        iy = (points[Ellipsis, 1] >= bounds[1, 0]) & (points[Ellipsis, 1] < bounds[1, 1])
-        iz = (points[Ellipsis, 2] >= bounds[2, 0]) & (points[Ellipsis, 2] < bounds[2, 1])
+        ix = (points[Ellipsis, 0] >= bounds[0, 0]) & (
+            points[Ellipsis, 0] < bounds[0, 1]
+        )
+        iy = (points[Ellipsis, 1] >= bounds[1, 0]) & (
+            points[Ellipsis, 1] < bounds[1, 1]
+        )
+        iz = (points[Ellipsis, 2] >= bounds[2, 0]) & (
+            points[Ellipsis, 2] < bounds[2, 1]
+        )
         valid = ix & iy & iz
         points = points[valid]
         segs = segs[valid]
@@ -419,16 +440,14 @@ class MyRobot(Robot):
         px = np.clip(px, 0, width - 1)
         py = np.clip(py, 0, height - 1)
         heightmap[py, px] = points[:, 2] - bounds[2, 0]
-        for c in range(colors.shape[-1]):
-            segmap[py, px, c] = segs[:, c]
-    
+        segmap[py, px, 0] = segs[:, 0]
+
         hmap = hmap.T
-        segmap = segmap[:,:,0].T
+        segmap = segmap[:, :, 0].T
         return hmap, segmap
 
     def possible_place_positions(self, obj_id):
-        
-
+        pass
         xyzs, colors, segs = self.get_pointcloud(obs)
         mask_id = self.object_dicts[obj_id]["mask_id"]
         valid = (segs[:, 0] != 1) & (segs[:, 0] != mask_id)
@@ -443,15 +462,14 @@ class MyRobot(Robot):
 
             pcd = self.object_dicts[oid]["pcd"]
             xyzs.append(pcd)
-    
+
         xyzs = np.concatenate(xyzs, axis=0)
         segs = np.ones((len(xyzs), 1))
-            
 
         _, _, segmap = self.get_segmap(xyzs=xyzs, segs=segs)
-        
-        empty_space = (segmap == 0)
-        cv2_array = (empty_space*255).astype(np.uint8)
+
+        empty_space = segmap == 0
+        cv2_array = (empty_space * 255).astype(np.uint8)
         radius = 50
         kernel = np.ones((radius, radius), np.uint8)
         empty_space = cv2.erode(cv2_array, kernel, iterations=1)
@@ -473,7 +491,9 @@ class MyRobot(Robot):
         obj_lst.remove(obj_id)
 
         for r, c in zip(rows, cols):
-            xyz = utils.pix_to_xyz((c, r), 0, self.bounds, self.pixel_size, skip_height=True)
+            xyz = utils.pix_to_xyz(
+                (c, r), 0, self.bounds, self.pixel_size, skip_height=True
+            )
             # print("xyz point", xyz[:2])
             label = get_place_description(self.object_dicts, obj_lst, xyz[:2])
             if label in place_descriptions:
@@ -489,7 +509,6 @@ class MyRobot(Robot):
 
         self.object_dicts[obj_id]["place_positions"] = place_descriptions
         return place_descriptions
-
 
     def pick(self, obj_id, visualize=False):
         pred_grasps, pred_success = self.get_grasp(
@@ -563,7 +582,7 @@ class MyRobot(Robot):
         label_infos=None,
         visualization=False,
         process_pcd_fn=None,
-        outlier_removal=False
+        outlier_removal=False,
     ):
         pcd_pts = []
         pcd_rgb = []
@@ -683,8 +702,6 @@ class MyRobot(Robot):
 
                 print(diffs)
 
-
-
                 min_diff = np.min(diffs)
                 if min_diff < std_threshold:
                     print("min_diff less than 2 cm, updating pcd with label:", l)
@@ -762,13 +779,12 @@ class MyRobot(Robot):
         return description, object_dicts
 
     def get_location(self, obj_id):
-
-        obj_pcd = self.object_dicts[obj_id]['pcd']
+        obj_pcd = self.object_dicts[obj_id]["pcd"]
 
         position = np.mean(obj_pcd, axis=0)
         print(f"Getting location for object {obj_id}:", position)
         return position
-    
+
     def find(self, object_name, object_description):
         print(f"finding object: {object_name}, description: {object_description}")
         obj_ids = list(self.object_dicts.keys())
@@ -792,9 +808,38 @@ class MyRobot(Robot):
 
         print("Chosen object: ", obj_ids[idx])
         return obj_ids[idx]
-    
+
     def no_action(self):
         print("Ending ...")
+
+    def learn_skill(self, skill_name):
+
+        if skill_name in self.primitives:
+            print("Skill already exists. returning the existing one.")
+            return self.primitives[skill_name]["fn"]
+
+        print("Asking to learn the skill:", skill_name)
+        fn = ask_for_skill(skill_name)
+
+        def new_skill(obj_id):
+            pcd = self.object_dicts[obj_id]["pcd"]
+            fn(pcd)
+
+        self.new_skill = new_skill
+
+        self.primitives[skill_name] = {
+            "fn": self.new_skill,
+            "description": f"""
+{skill_name}(object_id):
+    performs the task of {skill_name.replac("_", " ")}
+    Arguments:
+        object_id: int
+            Id of the object to perform the task of {skill_name.replac("_", " ")}
+    Returns: None
+"""}
+
+        return self.new_skill
+
 
     def get_primitives(self):
         self.primitives = {
@@ -859,6 +904,23 @@ no_action()
 """,
             },
         }
+
+
+        if self.skill_learner:
+            self.primitives["learn_skill"] = {
+                "fn": self.learn_skill,
+                "description": """
+learn_skill(skill_name)
+    adds a new skill to the current list of skills
+	Arguments:
+	    skill_name: str
+            a short name for the skill to learn
+	Returns:
+        skill_function: method
+            a function that takes as input an object_id and 
+            performs the skill on the object represented by the object_id
+"""
+            }
 
         fn_lst = list(self.primitives.keys())
         self.primitives_lst = ",".join([f"`{fn_name}`" for fn_name in fn_lst])

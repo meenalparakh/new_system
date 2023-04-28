@@ -92,7 +92,7 @@ def get_plan_loop(
     code_rectification=False, 
     first_run=True,
     verbal_query=False,
-    ask_plan=False
+    ask_plan=False,
 ):
 
     if not verbal_query:
@@ -158,10 +158,10 @@ def get_plan_loop(
 
 
 def execute_plan(robot, task_name, code_rectified):
-    primitives = robot.get_primitives()
+    # primitives = robot.get_primitives()
     context_str = ""
-    for fn_name in primitives:
-        context_str = context_str + fn_name + f" = primitives['{fn_name}']['fn']\n"
+    for fn_name in robot.primitives:
+        context_str = context_str + fn_name + f" = robot.primitives['{fn_name}']['fn']\n"
 
     context_str = context_str + ""
 
