@@ -18,6 +18,8 @@ from grasping.test_meshcat_pcd import sample_grasp_show as viz_grasps
 
 import pickle
 
+random.seed(0)
+np.random.seed(0)
 
 def obtain_pcd_n_mask(scene_dir, obj_id):
     with open(os.path.join(scene_dir, "pcd_grasp_info.pkl"), 'rb') as f:

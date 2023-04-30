@@ -11,6 +11,7 @@ import distinctipy as dp
 from heuristics import get_relation
 from scene_description_utils import construct_graph, graph_traversal, text_description
 from grasping.eval import initialize_net, cgn_infer
+from magnetic_gripper import MagneticGripper
 from scipy.spatial.transform import Rotation as R
 from grasp import control_robot
 from visualize_pcd import VizServer
@@ -18,6 +19,8 @@ from visualize_pcd import VizServer
 from skill_learner import ask_for_skill
 
 OPP_RELATIONS = {"above": "below", "contained_in": "contains"}
+
+np.random.seed(0)
 
 
 def print_object_dicts(object_dict, ks=["label", "relation", "desc", "used_name"]):
@@ -85,6 +88,7 @@ class MyRobot(Robot):
         self,
         gui=False,
         grasper=False,
+        magnetic_gripper=False,
         clip=False,
         meshcat_viz=False,
         device=None,
@@ -106,6 +110,11 @@ class MyRobot(Robot):
                 args=None,
                 device=device,
             )
+            if magnetic_gripper:
+                self.gripper = MagneticGripper(self)
+            else:
+                self.gripper = None
+                
         if clip:
             from clip_model import MyCLIP
 
@@ -113,6 +122,8 @@ class MyRobot(Robot):
 
         if meshcat_viz:
             self.viz = VizServer()
+        else:
+            self.viz = None
 
         self.skill_learner = skill_learner
 
@@ -126,10 +137,12 @@ class MyRobot(Robot):
         self.table_id = self.pb_client.load_urdf(
             "table/table.urdf", [0.6, 0, 0.4], ori, scaling=0.9
         )
-
         print("Table id", self.table_id)
         self.pb_client.changeDynamics(self.table_id, 0, mass=0, lateralFriction=2.0)
         self.table_bounds = np.array([[0.05, 0.95], [-0.5, 0.5], [0.85, 3.0]])
+
+        # setup plane
+        self.plane_id = self.pb_client.load_urdf("plane.urdf")
 
         # setup camera
         self._setup_cameras()
@@ -390,14 +403,17 @@ class MyRobot(Robot):
         pred_grasps, pred_success, _ = cgn_infer(
             self.grasper, final_pcd, final_mask, threshold=threshold
         )
-        print(len(pred_grasps), pred_grasps.shape, "<= these are the grasps")
+        # print(len(pred_grasps), pred_grasps.shape, "<= these are the grasps")
 
-        pred_grasps[:, :3, 3] = pred_grasps[:, :3, 3] + translation
 
         n = 0 if pred_success is None else pred_grasps.shape[0]
         print("model pass.", n, "grasps found.")
+        if n == 0:
+            return None, None
 
-        if visualize:
+        pred_grasps[:, :3, 3] = pred_grasps[:, :3, 3] + translation
+
+        if visualize and self.viz:
             grasp_idx = np.argmax(pred_success)
             grasp_pose = pred_grasps[grasp_idx : grasp_idx + 1]
             self.viz.view_grasps(grasp_pose)
@@ -515,6 +531,15 @@ class MyRobot(Robot):
             obj_id, threshold=0.8, add_floor=self.bg_pcd, visualize=visualize
         )
 
+        if pred_grasps is None:
+            print("Again, no grasps found. Need help with completing the pick.")
+            pos, ori = self.pb_client.getBasePositionAndOrientation(obj_id)
+            self.pb_client.resetBasePositionAndOrientation(obj_id, [0.5, -0.6, 0.5], ori)
+            for _ in range(100):
+                self.pb_client.stepSimulation()
+            print("Teleported in simulator")
+            return
+
         # grasp_idx = random.choice(range(len(grasps)))
         grasp_idx = np.argmax(pred_success)
         grasp_pose = pred_grasps[grasp_idx]
@@ -522,6 +547,8 @@ class MyRobot(Robot):
         self.pick_given_pose(grasp_pose)
 
     def pick_given_pose(self, pick_pose, translate=0.13):
+        self.gripper.release()
+
         z_rot = np.eye(4)
         z_rot[2, 3] = translate
         z_rot[:3, :3] = R.from_euler("z", np.pi / 2).as_matrix()
@@ -538,11 +565,39 @@ class MyRobot(Robot):
             pose,
             robot_category="franka",
             control_mode="linear",
-            move_up=0.15,
+            move_up=0.05,
             linear_offset=-0.01,
         )
+        if self.gripper:
+            self.gripper.activate()
+
+        self.arm.move_ee_xyz([0, 0, 0.15])
 
         print("Pick completed")
+
+    # def pick_sim(self, obj_id):
+    #     pos, ori = self.pb_client.getBasePositionAndOrientation(obj_id)
+    #     pos = [0.5, -1.0, ]
+    #     self.pb_client.resetBasePositionAndOrientation(obj_id, pos, ori)
+        
+    # def place_sim(self, obj_id, position):
+    #     pass
+
+    def move_arm(self, pos1, pos2):
+
+        # move to pos1
+        current_position = self.arm.get_ee_pose()[0]
+        direction = np.array(pos1) - current_position
+        direction[2] = 0
+        self.arm.move_ee_xyz(direction)
+
+        # move to pos2
+        current_position = self.arm.get_ee_pose()[0]
+        direction = np.array(pos2) - current_position
+        direction[2] = 0
+        self.arm.move_ee_xyz(direction)
+
+
 
     def place(self, obj_id, position):
         if len(position) == 2:
@@ -559,6 +614,8 @@ class MyRobot(Robot):
             success = self.arm.move_ee_xyz([0, 0, -0.01])
 
         self.arm.eetool.open()
+        if self.gripper:
+            self.gripper.release()
 
         current_rotation = self.arm.get_ee_pose()[2]
         delta = current_rotation @ np.array([[0], [0], [-0.05]])
