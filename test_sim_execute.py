@@ -8,61 +8,46 @@ from gpt_module import ChatGPTModule
 from prompt_manager import get_plan, execute_plan
 
 if __name__ == "__main__":
-    robot = MyRobot(gui=True, grasper=True, clip=True, meshcat_viz=True)
+    robot = MyRobot(gui=False, grasper=True, clip=True, meshcat_viz=True)
     robot.reset("cup_over_bowl")
     # robot.reset("one_object")
 
-    obs = robot.get_obs()
+    # obs = robot.get_obs()
+    # combined_pts, combined_rgb = robot.get_combined_pcd(
+    #     obs["colors"], obs["depths"], idx=None
+    # )
+    # combined_pts, combined_rgb, _ = robot.crop_pcd(combined_pts, combined_rgb, None)
+    # robot.viz.view_pcd(combined_pts, combined_rgb)
 
-    combined_pts, combined_rgb = robot.get_combined_pcd(
-        obs["colors"], obs["depths"], idx=None
-    )
+    # segs, info_dict = robot.get_segment_labels_and_embeddings(
+    #     obs["colors"], obs["depths"], robot.clip
+    # )
+    # object_dicts = robot.get_segmented_pcd(
+    #     obs["colors"],
+    #     obs["depths"],
+    #     segs,
+    #     remove_floor_ht=1.0,
+    #     std_threshold=0.02,
+    #     label_infos=info_dict,
+    #     visualization=True,
+    #     process_pcd_fn=robot.crop_pcd,
+    # )
 
-    combined_pts, combined_rgb, _ = robot.crop_pcd(combined_pts, combined_rgb, None)
+    # description, object_dicts = robot.get_scene_description(object_dicts)
 
-    robot.viz.view_pcd(combined_pts, combined_rgb)
+    # robot.object_dicts = object_dicts
+    # print_object_dicts(object_dicts)
+    # print(description)
 
-    segs, info_dict = robot.get_segment_labels_and_embeddings(
-        obs["colors"], obs["depths"], robot.clip
-    )
+    # with open("object_dicts.pkl", 'wb') as f:
+    #     pickle.dump(object_dicts, f)
 
-    object_dicts = robot.get_segmented_pcd(
-        obs["colors"],
-        obs["depths"],
-        segs,
-        remove_floor_ht=1.0,
-        std_threshold=0.02,
-        label_infos=info_dict,
-        visualization=True,
-        process_pcd_fn=robot.crop_pcd,
-    )
+    # input("stop")
 
-    description, object_dicts = robot.get_scene_description(object_dicts)
+    with open("object_dicts.pkl", 'rb') as f:
+        robot.object_dicts = pickle.load(f)      
 
-    robot.object_dicts = object_dicts
-    print_object_dicts(object_dicts)
-    print(description)
 
-    # //////////////////////////////////////////////////////////////////////////////
-    # Visualization of point clouds
-    # //////////////////////////////////////////////////////////////////////////////
-
-    print("Number of objects", len(object_dicts))
-    pcds = []
-    colors = []
-    rand_colors = dp.get_colors(len(object_dicts))
-    for idx, obj in enumerate(object_dicts):
-        label = object_dicts[obj]["label"][0]
-        pcd = object_dicts[obj]["pcd"]
-        color = object_dicts[obj]["rgb"]
-
-        robot.viz.view_pcd(pcd, color, f"{idx}_{label}")
-        pcds.append(pcd)
-        colors.append(color)
-
-    pcds = np.vstack(pcds)
-    colors = np.vstack(colors)
-    robot.viz.view_pcd(pcds, colors)
 
     # //////////////////////////////////////////////////////////////////////////////
     # Grasps
@@ -89,7 +74,7 @@ if __name__ == "__main__":
     # //////////////////////////////////////////////////////////////////////////////
     # Custom Plan check
     # //////////////////////////////////////////////////////////////////////////////
-
+    
     mug_id = robot.find("bowl", "lying on the right side of the table")
     basket_id = robot.find("basket", "lying on the left of the bowl")
 
@@ -97,6 +82,29 @@ if __name__ == "__main__":
     
     basket_location = robot.get_location(basket_id)
     robot.place(mug_id, basket_location)
+
+
+    # //////////////////////////////////////////////////////////////////////////////
+    # Execution check
+    # //////////////////////////////////////////////////////////////////////////////
+
+    code_str = """
+bowl_id = find("bowl")
+bowl_pos = get_location(bowl_id)
+
+tray_id = find("tray")
+tray_pos = get_location(tray_id)
+
+pick(bowl_id)
+move(bowl_pos, tray_pos)
+
+tilt_bowl = learn_skill("tilt_object")
+tilt_bowl(bowl_id)
+
+shelf_id = find("shelf")
+shelf_pos = get_location(shelf_id)
+
+"""
 
 
     # //////////////////////////////////////////////////////////////////////////////

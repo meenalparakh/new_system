@@ -598,7 +598,6 @@ class MyRobot(Robot):
         self.arm.move_ee_xyz(direction)
 
 
-
     def place(self, obj_id, position):
         if len(position) == 2:
             position = [*position, 0.9]
