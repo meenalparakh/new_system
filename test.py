@@ -97,6 +97,34 @@ if __name__ == "__main__":
     basket_location = robot.get_location(basket_id)
     robot.place(mug_id, basket_location)
 
+
+    # //////////////////////////////////////////////////////////////////////////////
+    # Execution check
+    # //////////////////////////////////////////////////////////////////////////////
+
+    code_str = """
+bowl_id = find("bowl")
+bowl_pos = get_location(bowl_id)
+
+tray_id = find("tray")
+tray_pos = get_location(tray_id)
+
+pick(bowl_id)
+move(bowl_pos, tray_pos)
+
+tilt_bowl = learn_skill("tilt_object")
+tilt_bowl(bowl_id)
+
+shelf_id = find("shelf")
+shelf_pos = get_location(shelf_id)
+
+
+
+"""
+
+
+
+
     # //////////////////////////////////////////////////////////////////////////////
     # LLM Planning
     # //////////////////////////////////////////////////////////////////////////////

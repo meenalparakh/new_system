@@ -1,9 +1,7 @@
 import meshcat
 import meshcat.geometry as g
 
-from pyngrok import ngrok
-
-
+# from pyngrok import ngrok
 
 class VizServer():
 
@@ -14,10 +12,10 @@ class VizServer():
         self.mc_vis['meshcat'].delete()
         self.mc_vis['/'].delete()
 
-        http_tunnel = ngrok.connect(port_vis, bind_tls=False)
-        web_url = http_tunnel.public_url
+        # http_tunnel = ngrok.connect(port_vis, bind_tls=False)
+        # web_url = http_tunnel.public_url
 
-        print(f'Meshcat is now available at {web_url}')
+        # print(f'Meshcat is now available at {web_url}')
 
     def view_pcd(self, pts, colors=None, name="scene"):
 

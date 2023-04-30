@@ -25,11 +25,11 @@ class CupOverBowl:
             ASSET_LOCATION
             + "shapenet_objects/02880940/4b32d2c623b54dd4fe296ad57d60d898/models/model_normalized.urdf",
             base_pos=[0.5, 0.20, 1.21],
-            base_ori=[1, 0, 0, 1],
-            scaling=0.2,
+            base_ori=[0, 0, 0, 1],
+            scaling=0.3,
             useFixedBase=False,
         )
-        self.robot.pb_client.changeDynamics(bowl_id, 1, mass=0.1, lateralFriction=10.0)
+        self.robot.pb_client.changeDynamics(bowl_id, 1, mass=0.5, lateralFriction=10.0)
 
         cup_quat = R.from_euler("xyz", [np.pi / 2, 0, 0]).as_quat()
         print("Cup quat", cup_quat)
@@ -37,9 +37,9 @@ class CupOverBowl:
         basket_id = self.robot.pb_client.load_urdf(
             ASSET_LOCATION
             + "shapenet_objects/02801938/33a623a68ac3a6541c8c7b57a94dbb2e/models/model_normalized.urdf",
-            base_pos=[0.7, -0.24, 1.01],
+            base_pos=[0.7, -0.34, 1.01],
             base_ori=cup_quat,
-            scaling=0.3,
+            scaling=0.5,
             useFixedBase=True,
         )
         self.robot.pb_client.changeDynamics(basket_id, 1, mass=0.2, lateralFriction=2.0)
