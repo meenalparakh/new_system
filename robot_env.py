@@ -895,17 +895,17 @@ class MyRobot(Robot):
             "fn": self.new_skill,
             "description": f"""
 {skill_name}(object_id):
-    performs the task of {skill_name.replac("_", " ")}
+    performs the task of {skill_name.replace("_", " ")}
     Arguments:
         object_id: int
-            Id of the object to perform the task of {skill_name.replac("_", " ")}
+            Id of the object to perform the task of {skill_name.replace("_", " ")}
     Returns: None
 """}
 
         return self.new_skill
 
 
-    def get_primitives(self):
+    def load_primitives(self):
         self.primitives = {
             "find": {
                 "fn": self.find,
@@ -978,7 +978,8 @@ learn_skill(skill_name)
     adds a new skill to the current list of skills
 	Arguments:
 	    skill_name: str
-            a short name for the skill to learn
+            a short name for the skill to learn, must be a string that can 
+            represent a function name (only alphabets and underscore can be used)
 	Returns:
         skill_function: method
             a function that takes as input an object_id and 

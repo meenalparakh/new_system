@@ -171,3 +171,25 @@ def execute_plan(robot, task_name, code_rectified):
     print("Executing the following code:\n" + code_str_with_fn_call)
     exec(code_str_with_fn_call, locals())
     print("code executed")
+
+
+
+def execute_plan_new(robot, task_name, code_rectified, prev_code_str=""):
+    # primitives = robot.get_primitives()
+    context_str = prev_code_str + "\n"
+
+    for fn_name in robot.primitives_running_lst:
+        context_str = context_str + fn_name + f" = robot.primitives['{fn_name}']['fn']\n"
+
+    robot.primitives_running_lst = []
+
+    context_str = context_str + ""
+
+    function_string = task_name + "()"
+    code_str_with_fn_call = context_str + code_rectified + "\n" + function_string
+
+    print("Executing the following code:\n" + code_str_with_fn_call)
+    exec(code_str_with_fn_call, locals())
+    print("code executed")
+
+    return context_str + code_rectified
