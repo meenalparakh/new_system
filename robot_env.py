@@ -142,7 +142,7 @@ class MyRobot(Robot):
         self.table_bounds = np.array([[0.05, 0.95], [-0.5, 0.5], [0.85, 3.0]])
 
         # setup plane
-        self.plane_id = self.pb_client.load_urdf("plane.urdf")
+        # self.plane_id = self.pb_client.load_urdf("plane.urdf")
 
         # setup camera
         self._setup_cameras()
@@ -527,6 +527,9 @@ class MyRobot(Robot):
         return place_descriptions
 
     def pick(self, obj_id, visualize=False):
+        
+        # self.obs_lst.append(self.get_obs())
+
         pred_grasps, pred_success = self.get_grasp(
             obj_id, threshold=0.8, add_floor=self.bg_pcd, visualize=visualize
         )
@@ -568,10 +571,15 @@ class MyRobot(Robot):
             move_up=0.05,
             linear_offset=-0.01,
         )
+        # self.obs_lst.append(self.get_obs())
+
+
         if self.gripper:
             self.gripper.activate()
 
         self.arm.move_ee_xyz([0, 0, 0.15])
+
+        # self.obs_lst.append(self.get_obs())
 
         print("Pick completed")
 
