@@ -163,4 +163,9 @@ def trial_run2():
 
 
 if __name__ == "__main__":
-    main()
+    # main()
+
+    robot = MyRobot(gui=False, skill_learner=True)
+
+    print(robot.primitives_lst)
+    print(robot.primitives_description)

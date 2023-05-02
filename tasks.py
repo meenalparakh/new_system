@@ -25,7 +25,7 @@ class CupOverBowl:
         bowl_id = self.robot.pb_client.load_urdf(
             ASSET_LOCATION
             + "shapenet_objects/02880940/4b32d2c623b54dd4fe296ad57d60d898/models/model_normalized.urdf",
-            base_pos=[0.5, 0.20, 1.21],
+            base_pos=[0.5, 0.20, 1.11],
             base_ori=[0, 0, 0, 1],
             scaling=0.3,
             useFixedBase=False,
@@ -77,7 +77,7 @@ class CupOverBowl:
         # self.robot.sim_dict["object_dicts"][3]["name"] = "bowl"
         # self.robot.sim_dict["object_dicts"][3]["mask_id"] = bowl_id2
 
-        for _ in range(10):
+        for _ in range(500):
             self.robot.pb_client.stepSimulation()
 
 

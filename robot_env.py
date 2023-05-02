@@ -160,6 +160,15 @@ class MyRobot(Robot):
         for _ in range(100):
             self.pb_client.stepSimulation()
 
+        self.airobot_arm_fns = {
+            "ur5e:open": lambda: self.arm.eetool.open,
+            "ur5e:close": lambda: self.arm.eetool.close,
+            "ur5e:get_pose": lambda: self.arm.get_ee_pose,
+            "ur5e:set_pose": lambda: self.arm.set_ee_pose,
+            "ur5e:move_xyz": lambda: self.arm.move_ee_xyz,
+            "ur5e:home": lambda: self.arm.go_home,
+        }
+
     def crop_pcd(self, pts, rgb=None, segs=None, bounds=None):
         if bounds is None:
             bounds = self.table_bounds
@@ -815,6 +824,10 @@ class MyRobot(Robot):
         # direction = np.array(pos2) - current_position
         # direction[2] = 0
         # self.arm.move_ee_xyz(direction)
+
+    def reorient_object(self, obj_id, angle):
+        # move to pos1
+        self.arm.rot_ee_xyz(angle, 'x')
 
     def place(self, obj_id, position):
         if len(position) == 2:
