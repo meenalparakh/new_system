@@ -1,4 +1,5 @@
 import os
+
 # from util import *
 import airobot as ar
 import numpy as np
@@ -14,17 +15,25 @@ def pos_offset_along_approach_vec(approach_vec, offset_dis):
     Returns: 3-d numpy array, the original coordinate plus this return value, you can get the translated coordinate
             along approaching vector
     """
-    denominator = np.sqrt(approach_vec[0] ** 2 + approach_vec[1] ** 2 + approach_vec[2] ** 2)
+    denominator = np.sqrt(
+        approach_vec[0] ** 2 + approach_vec[1] ** 2 + approach_vec[2] ** 2
+    )
     offset_z = approach_vec[2] / denominator * offset_dis
     offset_y = approach_vec[1] / denominator * offset_dis
     offset_x = approach_vec[0] / denominator * offset_dis
     return np.array([offset_x, offset_y, offset_z])
 
 
-
-
-def control_robot(robot, pose, robot_category='franka', control_mode='linear', move_up=0.0, 
-                    go_home=False, linear_offset=-0.022, action="pick"):
+def control_robot(
+    robot,
+    pose,
+    robot_category="franka",
+    control_mode="linear",
+    move_up=0.0,
+    go_home=False,
+    linear_offset=-0.022,
+    action="pick",
+):
     """
     Given the position and quaternion of target pose, choose the robot arm and control mode, then control the robot
     gripper to target pose
@@ -43,66 +52,77 @@ def control_robot(robot, pose, robot_category='franka', control_mode='linear', m
 
     def dispatch_control_order(order, pos=None, ori=None):
         return {
-            'ur5e:open': lambda: robot.arm.eetool.open(),
-            'ur5e:close': lambda: robot.arm.eetool.close(),
-            'ur5e:get_pose': lambda: robot.arm.get_ee_pose(),
-            'ur5e:set_pose': lambda: robot.arm.set_ee_pose(pos=pos, ori=ori),
-            'ur5e:move_xyz': lambda: robot.arm.move_ee_xyz(pos, eef_step=0.01),
-            'ur5e:home': lambda: robot.arm.go_home(),
+            "ur5e:open": lambda: robot.arm.eetool.open(),
+            "ur5e:close": lambda: robot.arm.eetool.close(),
+            "ur5e:get_pose": lambda: robot.arm.get_ee_pose(),
+            "ur5e:set_pose": lambda: robot.arm.set_ee_pose(pos=pos, ori=ori),
+            "ur5e:move_xyz": lambda: robot.arm.move_ee_xyz(pos, eef_step=0.01),
+            "ur5e:home": lambda: robot.arm.go_home(),
         }.get(order, lambda: None)()
 
-    if robot_category == 'franka':
-        robot_category = 'ur5e'  # The control commands of these two robots are the same in this simulation environment
+    if robot_category == "franka":
+        robot_category = "ur5e"  # The control commands of these two robots are the same in this simulation environment
 
     # there is a linear offset between gripper position and grasp position center,
 
     if action == "pick":
-        actual_target_pos = pose[0] + pos_offset_along_approach_vec(pose[2], linear_offset)
-        print('target grasp pose: pos|quat|approach vector', actual_target_pos, pose[1], pose[2])
+        actual_target_pos = pose[0] + pos_offset_along_approach_vec(
+            pose[2], linear_offset
+        )
+        print(
+            "target grasp pose: pos|quat|approach vector",
+            actual_target_pos,
+            pose[1],
+            pose[2],
+        )
 
-        dispatch_control_order(robot_category + ':open')
-        if control_mode == 'direct':
-            dispatch_control_order(robot_category + ':set_pose', actual_target_pos, pose[1])
-        elif control_mode == 'linear':
+        dispatch_control_order(robot_category + ":open")
+        if control_mode == "direct":
+            dispatch_control_order(
+                robot_category + ":set_pose", actual_target_pos, pose[1]
+            )
+        elif control_mode == "linear":
             temp_posi = pose[0] + pos_offset_along_approach_vec(pose[2], -0.25)
-            dispatch_control_order(robot_category + ':set_pose', temp_posi, pose[1])
-            cur_pos, cur_quat, _, cur_euler = dispatch_control_order(robot_category + ':get_pose')
+            dispatch_control_order(robot_category + ":set_pose", temp_posi, pose[1])
+            cur_pos, cur_quat, _, cur_euler = dispatch_control_order(
+                robot_category + ":get_pose"
+            )
             delta_pos = np.array(actual_target_pos) - np.array(cur_pos)
-            dispatch_control_order(robot_category + ':move_xyz', delta_pos)
-        cur_pos, cur_quat, _, cur_euler = dispatch_control_order(robot_category + ':get_pose')
-        print('current (pos|quat|euler): ', cur_pos, cur_quat, cur_euler)
-        dispatch_control_order(robot_category + ':close')
-        dispatch_control_order(robot_category + ':move_xyz', pos=[0, 0, move_up])
-
+            dispatch_control_order(robot_category + ":move_xyz", delta_pos)
+        cur_pos, cur_quat, _, cur_euler = dispatch_control_order(
+            robot_category + ":get_pose"
+        )
+        print("current (pos|quat|euler): ", cur_pos, cur_quat, cur_euler)
+        dispatch_control_order(robot_category + ":close")
+        dispatch_control_order(robot_category + ":move_xyz", pos=[0, 0, move_up])
 
     elif action == "place":
-        
         position = pose[0]
 
-        current_position = dispatch_control_order(robot_category + ':get_pose')[0]
+        current_position = dispatch_control_order(robot_category + ":get_pose")[0]
         direction = np.array(position) - current_position
         direction[2] = 0
-        dispatch_control_order(robot_category + ':move_xyz', direction)
+        dispatch_control_order(robot_category + ":move_xyz", direction)
         input()
 
-        preplace_position = dispatch_control_order(robot_category + ':get_pose')[0]
+        preplace_position = dispatch_control_order(robot_category + ":get_pose")[0]
         success = True
         while success:
-            success = dispatch_control_order(robot_category + ':move_xyz', [0, 0, -0.01])
+            success = dispatch_control_order(
+                robot_category + ":move_xyz", [0, 0, -0.01]
+            )
 
-        dispatch_control_order(robot_category + ':open')
+        dispatch_control_order(robot_category + ":open")
         temp_posi = pos_offset_along_approach_vec(pose[2], -0.15)
-        dispatch_control_order(robot_category + ':move_xyz', temp_posi)
-        dispatch_control_order(robot_category + ':move_xyz', [0, 0, move_up])
-        dispatch_control_order(robot_category + ':close')
-
+        dispatch_control_order(robot_category + ":move_xyz", temp_posi)
+        dispatch_control_order(robot_category + ":move_xyz", [0, 0, move_up])
+        dispatch_control_order(robot_category + ":close")
 
         # current_position = self.arm.get_ee_pose()[0]
         # self.arm.move_ee_xyz(preplace_position-current_position)
         # # self.arm.set_ee_pose(pos=preplace_position)
         # self.arm.eetool.close()
         # print("place completed")
-
 
         # actual_target_pos = pose[0] + pos_offset_along_approach_vec(pose[2], linear_offset)
         # print('target grasp pose: pos|quat|approach vector', actual_target_pos, pose[1], pose[2])
@@ -120,6 +140,3 @@ def control_robot(robot, pose, robot_category='franka', control_mode='linear', m
         # print('current (pos|quat|euler): ', cur_pos, cur_quat, cur_euler)
         # dispatch_control_order(robot_category + ':close')
         # dispatch_control_order(robot_category + ':move_xyz', pos=[0, 0, move_up])
-
-
-

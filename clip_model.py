@@ -3,12 +3,12 @@ import torch
 import numpy as np
 from PIL import Image
 
+
 class MyCLIP:
     def __init__(self, device=None, model_type="ViT-B/32"):
         # self.is_cuda = is_cuda
 
-        
-        print("The following models are available:", clip.available_models())  
+        print("The following models are available:", clip.available_models())
         if not (model_type in clip.available_models()):
             print(f"model_type {model_type} not available. Defaulting to ViT-B/32")
             model_type = "ViT-B/32"
@@ -57,7 +57,6 @@ class MyCLIP:
 
     def get_similarity_score(self, rgbs, texts):
         text_features = self.get_text_embeddings(texts)
-        image_features = self.get_image_embeddings(rgbs)    
+        image_features = self.get_image_embeddings(rgbs)
         similarity = text_features @ image_features.T
         return similarity
-

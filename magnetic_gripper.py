@@ -9,7 +9,6 @@ class MagneticGripper:
         self.activated = False
 
     def activate(self):
-
         print("finding contacts")
 
         contact_pts_l = self.robot.pb_client.getContactPoints(
@@ -34,7 +33,7 @@ class MagneticGripper:
             print(
                 f"Warning: Many bodies in contact {bodies}. Activating grasp for a random body."
             )
-            
+
         body_id = list(bodies)[0]
 
         body_pose = self.robot.pb_client.getLinkState(self.robot_id, self.l_link)
@@ -66,4 +65,3 @@ class MagneticGripper:
         if self.contact_constraint is not None:
             self.robot.pb_client.removeConstraint(self.contact_constraint)
             self.contact_constraint = None
-

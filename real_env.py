@@ -29,13 +29,13 @@ def get_detic_predictions(images, vocabulary="lvis", custom_vocabulary="", devic
     image_fnames = []
     for idx, img in enumerate(images):
         fname = os.path.join(image_dir, f"{idx}.png")
-        cv2.imwrite(fname, img[:,:,::-1])
+        cv2.imwrite(fname, img[:, :, ::-1])
         image_fnames.append(f"{idx}.png")
 
     print(image_fnames)
 
     if device is None:
-        device = "cuda" if torch.cuda.is_available() else "cpu" 
+        device = "cuda" if torch.cuda.is_available() else "cpu"
     subprocess.run(
         [
             "./run_detect_grasp_scripts.sh",
@@ -43,7 +43,7 @@ def get_detic_predictions(images, vocabulary="lvis", custom_vocabulary="", devic
             os.path.abspath(image_dir),
             vocabulary,
             custom_vocabulary,
-            device
+            device,
         ]
     )
 
@@ -122,7 +122,9 @@ def show_box(box, ax):
     )
 
 
-def get_segmentation_mask(predictor, image, depth, bbs, labels, prefix=0, depth_max=2.0):
+def get_segmentation_mask(
+    predictor, image, depth, bbs, labels, prefix=0, depth_max=2.0
+):
     """
     for each bb in the image, get the segmentation mask, using SAM
 
@@ -152,27 +154,36 @@ def get_segmentation_mask(predictor, image, depth, bbs, labels, prefix=0, depth_
         r2 = min(int(r2 + margin), H - 1)
         c1 = max(int(c1 - margin), 0)
         c2 = min(int(c2 + margin), W - 1)
-        
-        depth_crop = depth[r1: r2 + 1, c1: c2 +1]
+
+        depth_crop = depth[r1 : r2 + 1, c1 : c2 + 1]
         closest_pt = np.min(depth_crop)
         if closest_pt > depth_max:
-            print("the closest pt in the crop is at", closest_pt, "while max allowed is at", depth_max)
+            print(
+                "the closest pt in the crop is at",
+                closest_pt,
+                "while max allowed is at",
+                depth_max,
+            )
             continue
 
         masks, scores, logits = predictor.predict(box=bbs[j], multimask_output=False)
         mask = masks[0]
 
         kerne_size = 20
-        mask = cv2.erode(np.copy(mask*255).astype(np.uint8), kernel=np.ones((kerne_size, kerne_size), dtype=np.uint8))
-        mask = (mask > 240)
-
+        mask = cv2.erode(
+            np.copy(mask * 255).astype(np.uint8),
+            kernel=np.ones((kerne_size, kerne_size), dtype=np.uint8),
+        )
+        mask = mask > 240
 
         print("crop dims", r1, c1, r2, c2, "label", labels[j])
         crop = image[r1 : r2 + 1, c1 : c2 + 1, :]
 
         seg[mask > 0.5] = j + 1
-        
-        cv2.imwrite(os.path.join(sam_predictions_dir, f"crop_{j}_{labels[j]}.png"), crop)
+
+        cv2.imwrite(
+            os.path.join(sam_predictions_dir, f"crop_{j}_{labels[j]}.png"), crop
+        )
         embedding_dict[j + 1] = {"label": labels[j], "crop": crop}
 
         results.append(mask)
@@ -207,7 +218,6 @@ def get_clip_embeddings(d, clip_):
     return d
 
 
-
 class Camera:
     def __init__(self, cam_extr=None, cam_intr=None, H=None, W=None):
         self.depth_scale = 1.0
@@ -239,7 +249,7 @@ class RealRobot(MyRobot):
         cam_idx=[0, 1, 2, 3],
         real_robot_airobot=False,
         real_robot_polymetis=False,
-        device=None
+        device=None,
     ):
         super().__init__(gui, grasper=grasper, clip=clip, device=device)
         self.scene_dir = scene_dir
@@ -257,22 +267,23 @@ class RealRobot(MyRobot):
 
         if real_robot_airobot:
             from move_real_arm import PandaReal
+
             self.panda_robot = PandaReal("franka")
 
         if real_robot_polymetis:
             from move_real_arm import PandaRealPolymetis
+
             self.panda_robot = PandaRealPolymetis("franka")
 
     def pick_place_real(self, obj_id, place_position):
         pred_grasps, pred_success = self.get_grasp(
             obj_id, threshold=0.8, add_floor=self.bg_pcd, visualize=True
         )
-        
+
         # grasp_idx = random.choice(range(len(grasps)))
         grasp_idx = np.argmax(pred_success)
         grasp_pose = pred_grasps[grasp_idx]
         self.panda_robot.run(grasp_pose, place_position)
-
 
     def set_sam(self, device=None):
         from segment_anything import sam_model_registry, SamPredictor
@@ -340,7 +351,12 @@ class RealRobot(MyRobot):
             pred_boxes, pred_labels = get_bb_labels(pred_lst[idx], names)
 
             seg, embedding_dict = get_segmentation_mask(
-                self.sam_predictor, rgb, depths[idx], pred_boxes, pred_labels, prefix=idx
+                self.sam_predictor,
+                rgb,
+                depths[idx],
+                pred_boxes,
+                pred_labels,
+                prefix=idx,
             )
             embedding_dict = get_clip_embeddings(embedding_dict, clip_)
 

@@ -142,4 +142,4 @@ obs2.pkl
 pts_check.npy
 check.ply
 gpt_responses
-
+*.pkl

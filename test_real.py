@@ -17,10 +17,10 @@ if __name__ == "__main__":
         clip=True,
         grasper=True,
         cam_idx=[0, 1, 3],
-	device="cpu"
+        device="cpu",
     )
 
-    obs = robot.get_obs(source="obs2.pkl")
+    obs = robot.get_obs(source="obs.pkl")
     # obs = robot.get_obs(source="realsense")
 
     ###################### combined pcd visualization
@@ -34,8 +34,9 @@ if __name__ == "__main__":
         obs["colors"],
         obs["depths"],
         robot.clip,
+        # vocabulary="lvis"
         vocabulary="custom",
-        custom_vocabulary="tray,bowl,mug",
+        custom_vocabulary="mug_handle,mug_body",
     )
 
     # with open("cached_info.pkl", 'wb') as f:
@@ -43,7 +44,6 @@ if __name__ == "__main__":
 
     # with open("cached_info.pkl", 'rb') as f:
     #     segs, info_dict = pickle.load(f)
-
 
     object_dicts = robot.get_segmented_pcd(
         obs["colors"],
@@ -54,7 +54,7 @@ if __name__ == "__main__":
         label_infos=info_dict,
         visualization=True,
         process_pcd_fn=robot.crop_pcd,
-        outlier_removal=True
+        outlier_removal=True,
     )
 
     # input("press enter to continue")
@@ -70,7 +70,8 @@ if __name__ == "__main__":
     # //////////////////////////////////////////////////////////////////////////////
 
     print("Number of objects", len(object_dicts))
-    pcds = []; colors = []
+    pcds = []
+    colors = []
     rand_colors = dp.get_colors(len(object_dicts))
     for idx, obj in enumerate(object_dicts):
         label = object_dicts[obj]["label"][0]
@@ -84,7 +85,6 @@ if __name__ == "__main__":
     # pcds = np.vstack(pcds); colors = np.vstack(colors)
     viz.view_pcd(robot.bg_pcd, name="bg")
 
-
     # # //////////////////////////////////////////////////////////////////////////////
     # # Grasps
     # # //////////////////////////////////////////////////////////////////////////////
@@ -92,9 +92,7 @@ if __name__ == "__main__":
     all_grasps = []
     all_scores = []
     for obj_id in robot.object_dicts:
-        grasps, scores = robot.get_grasp(
-            obj_id, threshold=0.85, add_floor=robot.bg_pcd
-        )
+        grasps, scores = robot.get_grasp(obj_id, threshold=0.85, add_floor=robot.bg_pcd)
 
         if scores is None:
             print("No grasps to show.")

@@ -36,12 +36,11 @@ if __name__ == "__main__":
         custom_vocabulary="tray,mug",
     )
 
-    with open("cached_info.pkl", 'wb') as f:
+    with open("cached_info.pkl", "wb") as f:
         pickle.dump([segs, info_dict], f)
 
-    with open("cached_info.pkl", 'rb') as f:
+    with open("cached_info.pkl", "rb") as f:
         segs, info_dict = pickle.load(f)
-
 
     object_dicts = robot.get_segmented_pcd(
         obs["colors"],
@@ -65,7 +64,8 @@ if __name__ == "__main__":
     # //////////////////////////////////////////////////////////////////////////////
 
     print("Number of objects", len(object_dicts))
-    pcds = []; colors = []
+    pcds = []
+    colors = []
     rand_colors = dp.get_colors(len(object_dicts))
     for idx, obj in enumerate(object_dicts):
         label = object_dicts[obj]["label"][0]
@@ -76,13 +76,13 @@ if __name__ == "__main__":
         pcds.append(pcd)
         colors.append(color)
 
-    pcds = np.vstack(pcds); colors = np.vstack(colors)
+    pcds = np.vstack(pcds)
+    colors = np.vstack(colors)
     viz.view_pcd(pcds, colors)
 
     # //////////////////////////////////////////////////////////////////////////////
     # LLM Planning
     # //////////////////////////////////////////////////////////////////////////////
-
 
     obj_id = input("obj_id")
     place_position = input("place position:")

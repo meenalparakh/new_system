@@ -7,15 +7,15 @@ def replace(input_str, replacements):
 
     return input_str
 
+
 def extract_code_from_str(response_str, fn_name):
-    
     first_occurrence = response_str.find("```")
     assert first_occurrence >= 0
 
     second_occurrence = response_str.find("```", first_occurrence + 3)
     assert second_occurrence >= 0
 
-    code = response_str[first_occurrence: second_occurrence+3]
+    code = response_str[first_occurrence : second_occurrence + 3]
 
     python_occurrence = code.find("python")
     if python_occurrence >= 0:
@@ -24,15 +24,14 @@ def extract_code_from_str(response_str, fn_name):
     elts = code.split("python\n")
     result = "".join(elts)
 
-
     first_occurence_fn = result.find(f"{fn_name}()")
     assert first_occurence_fn >= 0
 
     second_occurrence_fn = result.find(f"{fn_name}()", first_occurence_fn + 2)
     if second_occurrence_fn < 0:
         return result
-    
-    return result[:second_occurrence_fn]
+
+    return result[:second_occurrence_fn] + "```"
 
 
 def get_plan(
@@ -42,7 +41,7 @@ def get_plan(
     function_name,
     primitives_lst,
     primitives_description,
-    code_rectification=False
+    code_rectification=False,
 ):
     replacements = {
         "PROMPT": task_prompt,
@@ -81,7 +80,6 @@ def get_plan(
     return task_name, extract_code_from_str(code_rectified, function_name)
 
 
-
 def get_plan_loop(
     scene_description,
     task_prompt,
@@ -89,14 +87,12 @@ def get_plan_loop(
     function_name,
     primitives_lst,
     primitives_description,
-    code_rectification=False, 
+    code_rectification=False,
     first_run=True,
     verbal_query=False,
     ask_plan=False,
 ):
-
     if not verbal_query:
-
         replacements = {
             "PROMPT": task_prompt,
             "SCENE_DESCRIPTION": scene_description,
@@ -113,9 +109,7 @@ def get_plan_loop(
 
         replacements["COMMAND"] = command.lower()[:-1]
 
-
         if first_run:
-
             plan_query = TEMPLATE_DICT["plan_template"].replace(
                 "SCENE_DESCRIPTION", scene_description
             )
@@ -137,20 +131,23 @@ def get_plan_loop(
             return task_name, extract_code_from_str(code_rectified, function_name)
 
         else:
-
-            continued_code_query = replace(TEMPLATE_DICT["continued_tasks"], {
-                "SCENE_CHANGES": replacements["SCENE_DESCRIPTION"],
-                "COMMAND": replacements["COMMAND"],
-                "TASK_NAME": replacements["TASK_NAME"],
-            })
+            continued_code_query = replace(
+                TEMPLATE_DICT["continued_tasks"],
+                {
+                    "SCENE_CHANGES": replacements["SCENE_DESCRIPTION"],
+                    "COMMAND": replacements["COMMAND"],
+                    "TASK_NAME": replacements["TASK_NAME"],
+                    "PRIMITIVES_LST": replacements["PRIMITIVES_LST"],
+                },
+            )
             continued_code = llm(continued_code_query)
 
             return function_name, extract_code_from_str(continued_code, function_name)
 
-        
     elif verbal_query:
-        
-        verbal_query_template = TEMPLATE_DICT["verbal_query"].replace("SCENE_DESCRIPTION", scene_description)
+        verbal_query_template = TEMPLATE_DICT["verbal_query"].replace(
+            "SCENE_DESCRIPTION", scene_description
+        )
         verbal_query_template = verbal_query_template.replace("QUERY", task_prompt)
 
         response = llm(verbal_query_template)
@@ -161,7 +158,9 @@ def execute_plan(robot, task_name, code_rectified):
     # primitives = robot.get_primitives()
     context_str = ""
     for fn_name in robot.primitives:
-        context_str = context_str + fn_name + f" = robot.primitives['{fn_name}']['fn']\n"
+        context_str = (
+            context_str + fn_name + f" = robot.primitives['{fn_name}']['fn']\n"
+        )
 
     context_str = context_str + ""
 
@@ -173,13 +172,14 @@ def execute_plan(robot, task_name, code_rectified):
     print("code executed")
 
 
-
 def execute_plan_new(robot, task_name, code_rectified, prev_code_str=""):
     # primitives = robot.get_primitives()
     context_str = prev_code_str + "\n"
 
     for fn_name in robot.primitives_running_lst:
-        context_str = context_str + fn_name + f" = robot.primitives['{fn_name}']['fn']\n"
+        context_str = (
+            context_str + fn_name + f" = robot.primitives['{fn_name}']['fn']\n"
+        )
 
     robot.primitives_running_lst = []
 

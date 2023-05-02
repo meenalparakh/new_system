@@ -117,5 +117,3 @@ if __name__ == "__main__":
     assert robot.object_dicts[obj_id]["label"][0] == "bowl"
 
     robot.pick(obj_id)
-
-

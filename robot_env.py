@@ -114,7 +114,7 @@ class MyRobot(Robot):
                 self.gripper = MagneticGripper(self)
             else:
                 self.gripper = None
-                
+
         if clip:
             from clip_model import MyCLIP
 
@@ -126,6 +126,7 @@ class MyRobot(Robot):
             self.viz = None
 
         self.skill_learner = skill_learner
+        self.load_primitives()
 
     def reset(self, task_name):
         success = self.arm.go_home()
@@ -370,55 +371,6 @@ class MyRobot(Robot):
         # ////////////////////////////////////////////////////////////////
         return segs, image_embeddings
 
-    def get_grasp(self, obj_id, threshold=0.85, add_floor=None, visualize=False):
-        combined_pcds = []
-        combined_masks = []
-
-        for oid in self.object_dicts:
-            pcd = self.object_dicts[oid]["pcd"]
-            mask = np.ones(len(pcd)) if oid == obj_id else np.zeros(len(pcd))
-
-            combined_pcds.append(pcd)
-            combined_masks.append(mask)
-
-        final_pcd = np.concatenate(combined_pcds, axis=0)
-        final_mask = np.concatenate(combined_masks, axis=0).reshape((-1, 1))
-
-        if add_floor is not None:
-            final_pcd = np.concatenate((final_pcd, add_floor), axis=0)
-            final_mask = np.concatenate(
-                (final_mask, np.zeros((len(add_floor), 1))), axis=0
-            )
-
-        # visualize_pcd(final_pcd)
-
-        ht = np.min(final_pcd[:, 2])
-        x, y = np.mean(final_pcd[:, :2], axis=0)
-
-        translation = np.array([x, y, ht])
-        final_pcd = final_pcd - translation
-
-        assert len(final_mask) == len(final_pcd)
-
-        pred_grasps, pred_success, _ = cgn_infer(
-            self.grasper, final_pcd, final_mask, threshold=threshold
-        )
-        # print(len(pred_grasps), pred_grasps.shape, "<= these are the grasps")
-
-
-        n = 0 if pred_success is None else pred_grasps.shape[0]
-        print("model pass.", n, "grasps found.")
-        if n == 0:
-            return None, None
-
-        pred_grasps[:, :3, 3] = pred_grasps[:, :3, 3] + translation
-
-        if visualize and self.viz:
-            grasp_idx = np.argmax(pred_success)
-            grasp_pose = pred_grasps[grasp_idx : grasp_idx + 1]
-            self.viz.view_grasps(grasp_pose)
-
-        return pred_grasps, pred_success
 
     def get_segmap(self, xyzs=None, segs=None, pixel_size=0.003125):
         # hmap, segmap = utils.get_heightmap(xyzs, segs, self.table_bounds, pixel_size)
@@ -461,180 +413,8 @@ class MyRobot(Robot):
         hmap = hmap.T
         segmap = segmap[:, :, 0].T
         return hmap, segmap
+    
 
-    def possible_place_positions(self, obj_id):
-        pass
-        xyzs, colors, segs = self.get_pointcloud(obs)
-        mask_id = self.object_dicts[obj_id]["mask_id"]
-        valid = (segs[:, 0] != 1) & (segs[:, 0] != mask_id)
-        xyzs = xyzs[valid]
-        colors = colors[valid]
-        segs = segs[valid]
-
-        xyzs = []
-        for oid in self.object_dicts:
-            if obj_id == oid:
-                continue
-
-            pcd = self.object_dicts[oid]["pcd"]
-            xyzs.append(pcd)
-
-        xyzs = np.concatenate(xyzs, axis=0)
-        segs = np.ones((len(xyzs), 1))
-
-        _, _, segmap = self.get_segmap(xyzs=xyzs, segs=segs)
-
-        empty_space = segmap == 0
-        cv2_array = (empty_space * 255).astype(np.uint8)
-        radius = 50
-        kernel = np.ones((radius, radius), np.uint8)
-        empty_space = cv2.erode(cv2_array, kernel, iterations=1)
-        mask = np.zeros_like(empty_space)
-        mask[radius:-radius, radius:-radius] = 255
-        empty_space = empty_space & mask
-        empty_space = np.where(empty_space > 100)
-
-        # empty_space = np.where(segmap == self.table_id)
-        # print(empty_space)
-        k = min(len(empty_space[0]), 10)
-        random_pts = random.sample(range(len(empty_space[0])), k)
-        rows = empty_space[0][random_pts]
-        cols = empty_space[1][random_pts]
-
-        place_descriptions = {}
-
-        obj_lst = list(self.object_dicts.keys())
-        obj_lst.remove(obj_id)
-
-        for r, c in zip(rows, cols):
-            xyz = utils.pix_to_xyz(
-                (c, r), 0, self.bounds, self.pixel_size, skip_height=True
-            )
-            # print("xyz point", xyz[:2])
-            label = get_place_description(self.object_dicts, obj_lst, xyz[:2])
-            if label in place_descriptions:
-                place_descriptions[label].append(xyz[:2])
-            else:
-                place_descriptions[label] = [xyz[:2]]
-
-        for obj_idx in obj_lst:
-            obj_info = self.object_dicts[obj_idx]
-            obj_location = obj_info["object_center"]
-            label = "over the " + obj_info["name"]
-            place_descriptions[label] = [obj_location[:2]]
-
-        self.object_dicts[obj_id]["place_positions"] = place_descriptions
-        return place_descriptions
-
-    def pick(self, obj_id, visualize=False):
-        
-        # self.obs_lst.append(self.get_obs())
-
-        pred_grasps, pred_success = self.get_grasp(
-            obj_id, threshold=0.8, add_floor=self.bg_pcd, visualize=visualize
-        )
-
-        if pred_grasps is None:
-            print("Again, no grasps found. Need help with completing the pick.")
-            pos, ori = self.pb_client.getBasePositionAndOrientation(obj_id)
-            self.pb_client.resetBasePositionAndOrientation(obj_id, [0.5, -0.6, 0.5], ori)
-            for _ in range(100):
-                self.pb_client.stepSimulation()
-            print("Teleported in simulator")
-            return
-
-        # grasp_idx = random.choice(range(len(grasps)))
-        grasp_idx = np.argmax(pred_success)
-        grasp_pose = pred_grasps[grasp_idx]
-
-        self.pick_given_pose(grasp_pose)
-
-    def pick_given_pose(self, pick_pose, translate=0.13):
-        self.gripper.release()
-
-        z_rot = np.eye(4)
-        z_rot[2, 3] = translate
-        z_rot[:3, :3] = R.from_euler("z", np.pi / 2).as_matrix()
-        gripper_pose = np.matmul(pick_pose, z_rot)
-
-        rotation = gripper_pose[:3, :3]
-        direction_vector = gripper_pose[:3, 2]
-        pick_position = gripper_pose[:3, 3]
-        # pick_position[2] = pick_position[2] - 0.10
-        pose = (pick_position, rotation, direction_vector)
-
-        control_robot(
-            self,
-            pose,
-            robot_category="franka",
-            control_mode="linear",
-            move_up=0.05,
-            linear_offset=-0.01,
-        )
-        # self.obs_lst.append(self.get_obs())
-
-
-        if self.gripper:
-            self.gripper.activate()
-
-        self.arm.move_ee_xyz([0, 0, 0.15])
-
-        # self.obs_lst.append(self.get_obs())
-
-        print("Pick completed")
-
-    # def pick_sim(self, obj_id):
-    #     pos, ori = self.pb_client.getBasePositionAndOrientation(obj_id)
-    #     pos = [0.5, -1.0, ]
-    #     self.pb_client.resetBasePositionAndOrientation(obj_id, pos, ori)
-        
-    # def place_sim(self, obj_id, position):
-    #     pass
-
-    def move_arm(self, pos1, pos2):
-
-        # move to pos1
-        current_position = self.arm.get_ee_pose()[0]
-        direction = np.array(pos1) - current_position
-        direction[2] = 0
-        self.arm.move_ee_xyz(direction)
-
-        # move to pos2
-        current_position = self.arm.get_ee_pose()[0]
-        direction = np.array(pos2) - current_position
-        direction[2] = 0
-        self.arm.move_ee_xyz(direction)
-
-
-    def place(self, obj_id, position):
-        if len(position) == 2:
-            position = [*position, 0.9]
-
-        current_position = self.arm.get_ee_pose()[0]
-        direction = np.array(position) - current_position
-        direction[2] = 0
-        self.arm.move_ee_xyz(direction)
-
-        preplace_position = self.arm.get_ee_pose()[0]
-        success = True
-        while success:
-            success = self.arm.move_ee_xyz([0, 0, -0.01])
-
-        self.arm.eetool.open()
-        if self.gripper:
-            self.gripper.release()
-
-        current_rotation = self.arm.get_ee_pose()[2]
-        delta = current_rotation @ np.array([[0], [0], [-0.05]])
-        self.arm.move_ee_xyz(delta[:, 0])
-
-        self.arm.move_ee_xyz([0, 0, 0.15])
-        self.arm.go_home()
-        # current_position = self.arm.get_ee_pose()[0]
-        # self.arm.move_ee_xyz(preplace_position-current_position)
-        # # self.arm.set_ee_pose(pos=preplace_position)
-        # self.arm.eetool.close()
-        print("place completed")
 
     def get_segmented_pcd(
         self,
@@ -842,6 +622,230 @@ class MyRobot(Robot):
 
         return description, object_dicts
 
+
+    def get_grasp(self, obj_id, threshold=0.85, add_floor=None, visualize=False):
+        combined_pcds = []
+        combined_masks = []
+
+        for oid in self.object_dicts:
+            pcd = self.object_dicts[oid]["pcd"]
+            mask = np.ones(len(pcd)) if oid == obj_id else np.zeros(len(pcd))
+
+            combined_pcds.append(pcd)
+            combined_masks.append(mask)
+
+        final_pcd = np.concatenate(combined_pcds, axis=0)
+        final_mask = np.concatenate(combined_masks, axis=0).reshape((-1, 1))
+
+        if add_floor is not None:
+            final_pcd = np.concatenate((final_pcd, add_floor), axis=0)
+            final_mask = np.concatenate(
+                (final_mask, np.zeros((len(add_floor), 1))), axis=0
+            )
+
+        # visualize_pcd(final_pcd)
+
+        ht = np.min(final_pcd[:, 2])
+        x, y = np.mean(final_pcd[:, :2], axis=0)
+
+        translation = np.array([x, y, ht])
+        final_pcd = final_pcd - translation
+
+        assert len(final_mask) == len(final_pcd)
+
+        pred_grasps, pred_success, _ = cgn_infer(
+            self.grasper, final_pcd, final_mask, threshold=threshold
+        )
+        # print(len(pred_grasps), pred_grasps.shape, "<= these are the grasps")
+
+        n = 0 if pred_success is None else pred_grasps.shape[0]
+        print("model pass.", n, "grasps found.")
+        if n == 0:
+            return None, None
+
+        pred_grasps[:, :3, 3] = pred_grasps[:, :3, 3] + translation
+
+        if visualize and self.viz:
+            grasp_idx = np.argmax(pred_success)
+            grasp_pose = pred_grasps[grasp_idx : grasp_idx + 1]
+            self.viz.view_grasps(grasp_pose)
+
+        return pred_grasps, pred_success
+
+
+
+    def possible_place_positions(self, obj_id):
+        pass
+        xyzs, colors, segs = self.get_pointcloud(obs)
+        mask_id = self.object_dicts[obj_id]["mask_id"]
+        valid = (segs[:, 0] != 1) & (segs[:, 0] != mask_id)
+        xyzs = xyzs[valid]
+        colors = colors[valid]
+        segs = segs[valid]
+
+        xyzs = []
+        for oid in self.object_dicts:
+            if obj_id == oid:
+                continue
+
+            pcd = self.object_dicts[oid]["pcd"]
+            xyzs.append(pcd)
+
+        xyzs = np.concatenate(xyzs, axis=0)
+        segs = np.ones((len(xyzs), 1))
+
+        _, _, segmap = self.get_segmap(xyzs=xyzs, segs=segs)
+
+        empty_space = segmap == 0
+        cv2_array = (empty_space * 255).astype(np.uint8)
+        radius = 50
+        kernel = np.ones((radius, radius), np.uint8)
+        empty_space = cv2.erode(cv2_array, kernel, iterations=1)
+        mask = np.zeros_like(empty_space)
+        mask[radius:-radius, radius:-radius] = 255
+        empty_space = empty_space & mask
+        empty_space = np.where(empty_space > 100)
+
+        # empty_space = np.where(segmap == self.table_id)
+        # print(empty_space)
+        k = min(len(empty_space[0]), 10)
+        random_pts = random.sample(range(len(empty_space[0])), k)
+        rows = empty_space[0][random_pts]
+        cols = empty_space[1][random_pts]
+
+        place_descriptions = {}
+
+        obj_lst = list(self.object_dicts.keys())
+        obj_lst.remove(obj_id)
+
+        for r, c in zip(rows, cols):
+            xyz = utils.pix_to_xyz(
+                (c, r), 0, self.bounds, self.pixel_size, skip_height=True
+            )
+            # print("xyz point", xyz[:2])
+            label = get_place_description(self.object_dicts, obj_lst, xyz[:2])
+            if label in place_descriptions:
+                place_descriptions[label].append(xyz[:2])
+            else:
+                place_descriptions[label] = [xyz[:2]]
+
+        for obj_idx in obj_lst:
+            obj_info = self.object_dicts[obj_idx]
+            obj_location = obj_info["object_center"]
+            label = "over the " + obj_info["name"]
+            place_descriptions[label] = [obj_location[:2]]
+
+        self.object_dicts[obj_id]["place_positions"] = place_descriptions
+        return place_descriptions
+
+    def pick(self, obj_id, visualize=False):
+        # self.obs_lst.append(self.get_obs())
+
+        pred_grasps, pred_success = self.get_grasp(
+            obj_id, threshold=0.8, add_floor=self.bg_pcd, visualize=visualize
+        )
+
+        if pred_grasps is None:
+            print("Again, no grasps found. Need help with completing the pick.")
+            pos, ori = self.pb_client.getBasePositionAndOrientation(obj_id)
+            self.pb_client.resetBasePositionAndOrientation(
+                obj_id, [0.5, -0.6, 0.5], ori
+            )
+            for _ in range(100):
+                self.pb_client.stepSimulation()
+            print("Teleported in simulator")
+            return
+
+        # grasp_idx = random.choice(range(len(grasps)))
+        grasp_idx = np.argmax(pred_success)
+        grasp_pose = pred_grasps[grasp_idx]
+
+        self.pick_given_pose(grasp_pose)
+
+    def pick_given_pose(self, pick_pose, translate=0.13):
+        self.gripper.release()
+
+        z_rot = np.eye(4)
+        z_rot[2, 3] = translate
+        z_rot[:3, :3] = R.from_euler("z", np.pi / 2).as_matrix()
+        gripper_pose = np.matmul(pick_pose, z_rot)
+
+        rotation = gripper_pose[:3, :3]
+        direction_vector = gripper_pose[:3, 2]
+        pick_position = gripper_pose[:3, 3]
+        # pick_position[2] = pick_position[2] - 0.10
+        pose = (pick_position, rotation, direction_vector)
+
+        control_robot(
+            self,
+            pose,
+            robot_category="franka",
+            control_mode="linear",
+            move_up=0.05,
+            linear_offset=-0.01,
+        )
+        # self.obs_lst.append(self.get_obs())
+
+        if self.gripper:
+            self.gripper.activate()
+
+        self.arm.move_ee_xyz([0, 0, 0.15])
+
+        # self.obs_lst.append(self.get_obs())
+
+        print("Pick completed")
+
+    # def pick_sim(self, obj_id):
+    #     pos, ori = self.pb_client.getBasePositionAndOrientation(obj_id)
+    #     pos = [0.5, -1.0, ]
+    #     self.pb_client.resetBasePositionAndOrientation(obj_id, pos, ori)
+
+    # def place_sim(self, obj_id, position):
+    #     pass
+
+    def move_arm(self, pos1, pos2=None):
+        # move to pos1
+        current_position = self.arm.get_ee_pose()[0]
+        direction = np.array(pos1) - current_position
+        direction[2] = 0
+        self.arm.move_ee_xyz(direction)
+
+        # # move to pos2
+        # current_position = self.arm.get_ee_pose()[0]
+        # direction = np.array(pos2) - current_position
+        # direction[2] = 0
+        # self.arm.move_ee_xyz(direction)
+
+    def place(self, obj_id, position):
+        if len(position) == 2:
+            position = [*position, 0.9]
+
+        current_position = self.arm.get_ee_pose()[0]
+        direction = np.array(position) - current_position
+        direction[2] = 0
+        self.arm.move_ee_xyz(direction)
+
+        preplace_position = self.arm.get_ee_pose()[0]
+        success = True
+        while success:
+            success = self.arm.move_ee_xyz([0, 0, -0.01])
+
+        self.arm.eetool.open()
+        if self.gripper:
+            self.gripper.release()
+
+        current_rotation = self.arm.get_ee_pose()[2]
+        delta = current_rotation @ np.array([[0], [0], [-0.05]])
+        self.arm.move_ee_xyz(delta[:, 0])
+
+        self.arm.move_ee_xyz([0, 0, 0.15])
+        self.arm.go_home()
+        # current_position = self.arm.get_ee_pose()[0]
+        # self.arm.move_ee_xyz(preplace_position-current_position)
+        # # self.arm.set_ee_pose(pos=preplace_position)
+        # self.arm.eetool.close()
+        print("place completed")
+
     def get_location(self, obj_id):
         obj_pcd = self.object_dicts[obj_id]["pcd"]
 
@@ -877,7 +881,6 @@ class MyRobot(Robot):
         print("Ending ...")
 
     def learn_skill(self, skill_name):
-
         if skill_name in self.primitives:
             print("Skill already exists. returning the existing one.")
             return self.primitives[skill_name]["fn"]
@@ -894,16 +897,29 @@ class MyRobot(Robot):
         self.primitives[skill_name] = {
             "fn": self.new_skill,
             "description": f"""
-{skill_name}(object_id):
+{skill_name}(object_id_subject, object_id_receiver=None):
     performs the task of {skill_name.replace("_", " ")}
     Arguments:
-        object_id: int
-            Id of the object to perform the task of {skill_name.replace("_", " ")}
+        object_id_subject: int
+            Id of the object to perform the task of {skill_name.replace("_", " ")}. 
+            This object is the subject of the action.
+
+        object_id_receiver: int (optional)
+            Id of any other object that may be relevant to accomplishing the task.
     Returns: None
-"""}
+""",
+        }
+
+        self.primitives_lst = self.primitives_lst + f",`{skill_name}`"
+        self.primitives_description = (
+            self.primitives_description[:-4]
+            + "\n"
+            + self.primitives[skill_name]["description"]
+            + "\n```"
+        )
+        self.primitives_running_lst.append(skill_name)
 
         return self.new_skill
-
 
     def load_primitives(self):
         self.primitives = {
@@ -920,6 +936,30 @@ find(object_name, object_description)
 
     Returns: int
         object_id , an integer representing the found object
+""",
+            },
+            "get_location": {
+                "fn": self.get_location,
+                "description": """
+get_location(object_id)
+    gives the location of the object `object_id`
+    Arguments:
+        object_id: int
+            Id of the object
+    Returns:
+        position: 3D array
+            the location of the object
+""",
+            },
+            "move_arm": {
+                "fn": self.move_arm,
+                "description": """
+move_arm(position)
+    Moves to the robotic arm to a location given by position
+    Arguments:
+        position: 3D array
+            the location to move the arm to
+    Returns: None
 """,
             },
             "pick": {
@@ -946,19 +986,6 @@ place(object_id, position)
     Returns: None
 """,
             },
-            "get_location": {
-                "fn": self.get_location,
-                "description": """
-get_location(object_id)
-    gives the location of the object `object_id`
-    Arguments:
-        object_id: int
-            Id of the object
-    Returns:
-        position: 3D array
-            the location of the object
-""",
-            },
             "no_action": {
                 "fn": self.no_action,
                 "description": """
@@ -968,7 +995,6 @@ no_action()
 """,
             },
         }
-
 
         if self.skill_learner:
             self.primitives["learn_skill"] = {
@@ -984,7 +1010,20 @@ learn_skill(skill_name)
         skill_function: method
             a function that takes as input an object_id and 
             performs the skill on the object represented by the object_id
-"""
+            another relevant object_id can be passed optionally.
+
+    For example:
+        # Example 1:
+        drawer_id = 2
+        open_drawer = learn_skill("open_drawer")
+        open_drawer(drawer_id) # opens the drawer represented by drawer_id
+
+        # Example 2:
+        bowl_id = 3
+        bin_id = 4
+        tilt_bowl = learn_skill("tilt_bowl")
+        tilt_bowl(bowl_id, bin_id) # tilts the bowl over the location of the bin
+""",
             }
 
         fn_lst = list(self.primitives.keys())
@@ -993,5 +1032,6 @@ learn_skill(skill_name)
             [self.primitives[fn]["description"] for fn in fn_lst]
         )
         self.primitives_description = "```\n" + self.primitives_description + "\n```"
+        self.primitives_running_lst = list(self.primitives.keys())
 
         return self.primitives

@@ -16,11 +16,12 @@ from scipy.spatial import Delaunay
 
 
 def get_object_relation(object_dicts, concept=["above", "contained_in"]):
-    '''
-    return a dictionary wherever the concept exist. 
+    """
+    return a dictionary wherever the concept exist.
     {moving_obj: anchor_obj for concept(anchor_obj, moving_obj) == True}
-    '''
+    """
     pass
+
 
 def above_deprecated(anchor_pcd, moving_pcd):
     """
@@ -45,7 +46,7 @@ def above_deprecated(anchor_pcd, moving_pcd):
         return False
 
     anchor_hull = Delaunay(anchor_pcd[:, :2])
-    pts_within_anchor = (anchor_hull.find_simplex(moving_pcd[:, :2]) >= 0)
+    pts_within_anchor = anchor_hull.find_simplex(moving_pcd[:, :2]) >= 0
     print(pts_within_anchor.shape, moving_pcd.shape)
     pts_overlapping_anchor = moving_pcd[pts_within_anchor]
 
@@ -76,20 +77,25 @@ def above_deprecated(anchor_pcd, moving_pcd):
         )
         return True
 
-def get_concept_label(anchor_pcd, moving_pcd, contain_threshold=0.2, above_pts_threshold=2):
+
+def get_concept_label(
+    anchor_pcd, moving_pcd, contain_threshold=0.2, above_pts_threshold=2
+):
     result = np.zeros(13)
 
-    pts_within_anchor = (Delaunay(anchor_pcd[:, :2]).find_simplex(moving_pcd[:, :2]) >= 0)
+    pts_within_anchor = Delaunay(anchor_pcd[:, :2]).find_simplex(moving_pcd[:, :2]) >= 0
     moving_pts_overlapping = moving_pcd[pts_within_anchor]
 
     if len(moving_pts_overlapping) < above_pts_threshold:
         print("False. Number of overlapping points is small:", moving_pts_overlapping)
         overlapping = False
     else:
-        overlapping = True        
+        overlapping = True
 
     if overlapping:
-        pts_within_moving = (Delaunay(moving_pts_overlapping[:, :2]).find_simplex(anchor_pcd[:, :2]) >= 0)
+        pts_within_moving = (
+            Delaunay(moving_pts_overlapping[:, :2]).find_simplex(anchor_pcd[:, :2]) >= 0
+        )
         anchor_pts_overlapping = anchor_pcd[pts_within_moving]
 
         max_ht_anchor = np.max(anchor_pts_overlapping[:, 2])
@@ -102,50 +108,56 @@ def get_concept_label(anchor_pcd, moving_pcd, contain_threshold=0.2, above_pts_t
 
         print("Possibilities", possibility)
         if "contained_in" in possibility:
-            pts_inside_anchor = (Delaunay(anchor_pcd).find_simplex(moving_pcd) >= 0)
+            pts_inside_anchor = Delaunay(anchor_pcd).find_simplex(moving_pcd) >= 0
             num_pts_inside = np.sum(pts_inside_anchor)
-            ratio  = num_pts_inside/len(moving_pcd)
-            print(f"Pts inside: {num_pts_inside}, total pts: {len(moving_pcd)}, Ratio: {ratio}")
+            ratio = num_pts_inside / len(moving_pcd)
+            print(
+                f"Pts inside: {num_pts_inside}, total pts: {len(moving_pcd)}, Ratio: {ratio}"
+            )
 
-            if  ratio > contain_threshold:
+            if ratio > contain_threshold:
                 print("More than 1/4th points lie inside anchor.")
                 # return "contained_in"
-                result[7] = 1.
+                result[7] = 1.0
                 return result
             else:
-                result[3] = 1.
+                result[3] = 1.0
                 return result
         else:
-            pts_inside_moving = (Delaunay(moving_pcd).find_simplex(anchor_pcd) >= 0)
+            pts_inside_moving = Delaunay(moving_pcd).find_simplex(anchor_pcd) >= 0
             num_pts_inside = np.sum(pts_inside_moving)
 
-            ratio  = num_pts_inside/len(anchor_pcd)
-            print(f"Pts inside: {num_pts_inside}, total pts: {len(anchor_pcd)}, Ratio: {ratio}")
+            ratio = num_pts_inside / len(anchor_pcd)
+            print(
+                f"Pts inside: {num_pts_inside}, total pts: {len(anchor_pcd)}, Ratio: {ratio}"
+            )
 
             if ratio > contain_threshold:
                 print("More than 1/4th points lie inside moving.")
-                result[8] = 1.
+                result[8] = 1.0
                 return result
             else:
-                result[4] = 1.
-                return result    
+                result[4] = 1.0
+                return result
 
     else:
         return result
 
 
 def get_relation(anchor_pcd, moving_pcd, contain_threshold=0.2, above_pts_threshold=2):
-    pts_within_anchor = (Delaunay(anchor_pcd[:, :2]).find_simplex(moving_pcd[:, :2]) >= 0)
+    pts_within_anchor = Delaunay(anchor_pcd[:, :2]).find_simplex(moving_pcd[:, :2]) >= 0
     moving_pts_overlapping = moving_pcd[pts_within_anchor]
 
     if len(moving_pts_overlapping) < above_pts_threshold:
         print("False. Number of overlapping points is small:", moving_pts_overlapping)
         overlapping = False
     else:
-        overlapping = True   
+        overlapping = True
 
     if overlapping:
-        pts_within_moving = (Delaunay(moving_pts_overlapping[:, :2]).find_simplex(anchor_pcd[:, :2]) >= 0)
+        pts_within_moving = (
+            Delaunay(moving_pts_overlapping[:, :2]).find_simplex(anchor_pcd[:, :2]) >= 0
+        )
         anchor_pts_overlapping = anchor_pcd[pts_within_moving]
         if len(anchor_pts_overlapping) == 0:
             possibility = ["contained_in", "above"]
@@ -159,30 +171,34 @@ def get_relation(anchor_pcd, moving_pcd, contain_threshold=0.2, above_pts_thresh
 
         print("Possibilities", possibility)
         if "contained_in" in possibility:
-            pts_inside_anchor = (Delaunay(anchor_pcd).find_simplex(moving_pcd) >= 0)
+            pts_inside_anchor = Delaunay(anchor_pcd).find_simplex(moving_pcd) >= 0
             num_pts_inside = np.sum(pts_inside_anchor)
-            ratio  = num_pts_inside/len(moving_pcd)
-            print(f"Pts inside: {num_pts_inside}, total pts: {len(moving_pcd)}, Ratio: {ratio}")
+            ratio = num_pts_inside / len(moving_pcd)
+            print(
+                f"Pts inside: {num_pts_inside}, total pts: {len(moving_pcd)}, Ratio: {ratio}"
+            )
 
-            if  ratio > contain_threshold:
+            if ratio > contain_threshold:
                 print("More than 1/4th points lie inside anchor.")
                 # return "contained_in"
                 return "contained_in"
             else:
                 return "above"
         else:
-            pts_inside_moving = (Delaunay(moving_pcd).find_simplex(anchor_pcd) >= 0)
+            pts_inside_moving = Delaunay(moving_pcd).find_simplex(anchor_pcd) >= 0
             num_pts_inside = np.sum(pts_inside_moving)
 
-            ratio  = num_pts_inside/len(anchor_pcd)
-            print(f"Pts inside: {num_pts_inside}, total pts: {len(anchor_pcd)}, Ratio: {ratio}")
+            ratio = num_pts_inside / len(anchor_pcd)
+            print(
+                f"Pts inside: {num_pts_inside}, total pts: {len(anchor_pcd)}, Ratio: {ratio}"
+            )
 
             if ratio > contain_threshold:
                 print("More than 1/4th points lie inside moving.")
                 return "contains"
             else:
-                return "below"  
-            
+                return "below"
+
     else:
         return None
 
@@ -195,7 +211,7 @@ def contain(anchor_pcd, moving_pcd):
     max_anchor_height = np.max(anchor_pcd[:, 2])
 
     anchor_hull = Delaunay(anchor_pcd[:, :2])
-    pts_within_anchor = (anchor_hull.find_simplex(moving_pcd[:, :2]) >= 0)
+    pts_within_anchor = anchor_hull.find_simplex(moving_pcd[:, :2]) >= 0
     print(pts_within_anchor.shape, moving_pcd.shape)
     pts_overlapping_anchor = moving_pcd[pts_within_anchor]
 
@@ -205,7 +221,7 @@ def contain(anchor_pcd, moving_pcd):
     if num_pts_below > 100:
         print("True. Many (> 100) points lie inside the anchor")
         return True
-    elif num_pts_below/total_pts > 0.25:
+    elif num_pts_below / total_pts > 0.25:
         return True
     else:
         return False

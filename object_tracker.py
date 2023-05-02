@@ -25,11 +25,9 @@ np.random.seed(10)
 #         robot.obs_lst.append(obs)
 
 if __name__ == "__main__":
-    robot = MyRobot(gui=False, 
-                    grasper=True, 
-                    magnetic_gripper=True,
-                    clip=True, 
-                    meshcat_viz=False)
+    robot = MyRobot(
+        gui=False, grasper=True, magnetic_gripper=True, clip=True, meshcat_viz=False
+    )
     robot.reset("cup_over_bowl")
 
     obs = robot.get_obs()
@@ -52,9 +50,6 @@ if __name__ == "__main__":
     robot.object_dicts = object_dicts
     # print_object_dicts(object_dicts)
     print(description)
-
-
-
 
     robot.obs_lst = []
     # thread = Thread(target=store_obs, args=(robot,))

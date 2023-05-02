@@ -3,6 +3,7 @@ from scipy.spatial.transform import Rotation as R
 
 ASSET_LOCATION = "../object-relations/data_new/"
 
+
 class CupOverBowl:
     def __init__(self, robot):
         self.robot = robot
@@ -79,6 +80,7 @@ class CupOverBowl:
         for _ in range(10):
             self.robot.pb_client.stepSimulation()
 
+
 class OneObject:
     def __init__(self, robot):
         self.robot = robot
@@ -111,7 +113,6 @@ class OneObject:
 
         self.robot.sim_dict["object_dicts"][0]["name"] = "mug"
         self.robot.sim_dict["object_dicts"][0]["mask_id"] = cup_id
-
 
 
 class RealTask:

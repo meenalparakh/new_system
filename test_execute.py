@@ -1,11 +1,12 @@
-
 import numpy as np
 from robot_env import MyRobot
 
 from prompt_manager import execute_plan_new
 from skill_learner import ask_for_skill
 
-
+####################################################
+#### Small example robot class for testing execution
+####################################################
 
 class TestExecuteRobot(MyRobot):
     def __init__(self):
@@ -20,26 +21,21 @@ class TestExecuteRobot(MyRobot):
         )
 
         self.object_dicts = {
-            3: {
-                'pcd': np.random.rand(123, 3),
-                'label': "bowl"
-            },
-            4: {
-                'pcd': 100 + np.random.rand(451, 3),
-                'label': "tray"
-            }
+            3: {"pcd": np.random.rand(123, 3), "label": "bowl"},
+            4: {"pcd": 100 + np.random.rand(451, 3), "label": "tray"},
         }
         self.robot_id = 124
         self.load_primitives()
 
     def place(self, obj_id, position):
-        print("moving arm, printing robot val:", self.robot_id, "args:", position, obj_id)
+        print(
+            "moving arm, printing robot val:", self.robot_id, "args:", position, obj_id
+        )
 
     def no_action(self):
         print("Ending ...")
 
     def learn_skill(self, skill_name):
-
         if skill_name in self.primitives:
             print("Skill already exists. returning the existing one.")
             return self.primitives[skill_name]["fn"]
@@ -62,11 +58,11 @@ class TestExecuteRobot(MyRobot):
         object_id: int
             Id of the object to perform the task of {skill_name.replace("_", " ")}
     Returns: None
-"""}
+""",
+        }
         self.primitives_running_lst.append(skill_name)
 
         return self.new_skill
-
 
     def load_primitives(self):
         self.primitives = {
@@ -83,7 +79,6 @@ place(object_id, position)
     Returns: None
 """,
             },
-
             "no_action": {
                 "fn": self.no_action,
                 "description": """
@@ -93,7 +88,6 @@ no_action()
 """,
             },
         }
-
 
         if self.skill_learner:
             self.primitives["learn_skill"] = {
@@ -109,7 +103,7 @@ learn_skill(skill_name)
         skill_function: method
             a function that takes as input an object_id and 
             performs the skill on the object represented by the object_id
-"""
+""",
             }
 
         fn_lst = list(self.primitives.keys())
@@ -122,7 +116,6 @@ learn_skill(skill_name)
         self.primitives_running_lst = list(self.primitives.keys())
 
         return self.primitives
-
 
 
 def main():
@@ -167,7 +160,6 @@ def trial_run2():
 
     execute_plan_new(robot, task_name, final_code, prev_code_str=code_executed)
     print(robot.primitives.keys())
-
 
 
 if __name__ == "__main__":
