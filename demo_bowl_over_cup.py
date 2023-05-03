@@ -4,7 +4,7 @@ import numpy as np
 
 if __name__ == "__main__":
     robot = MyRobot(
-        gui=True, grasper=True, clip=True, meshcat_viz=True, magnetic_gripper=True
+        gui=False, grasper=True, clip=True, meshcat_viz=True, magnetic_gripper=True
     )
     robot.reset("bowl_over_cup")
     # robot.reset("one_object")

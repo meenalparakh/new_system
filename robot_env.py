@@ -339,7 +339,7 @@ class MyRobot(Robot):
 
             return pcd_pts, pcd_rgb
 
-    def update_obs(self):
+    def update_dicts(self):
         """
         generate a new object dict and do the matching with the old objects
         mainly clip crop based matching
@@ -400,6 +400,10 @@ class MyRobot(Robot):
         if (len(np.unique(indices)) == len(indices)):
             print("all good")
             for cid, nid in mappings:
+
+                self.viz.view_pcd(self.object_dicts[cid]["pcd"], name=f"current_{cid}")
+                self.viz.view_pcd(new_object_dicts[cid]["pcd"], name=f"new_{nid}")
+
                 self.object_dicts[cid] = new_object_dicts[nid]
 
         else:
@@ -943,6 +947,8 @@ class MyRobot(Robot):
         # # self.arm.set_ee_pose(pos=preplace_position)
         # self.arm.eetool.close()
         print("place completed")
+
+        self.update_dicts()
 
     def get_location(self, obj_id):
         obj_pcd = self.object_dicts[obj_id]["pcd"]
