@@ -8,6 +8,3 @@ def ask_for_skill(skill_name):
         print("The object pcd is at:", np.mean(pcd, axis=0))
 
     return skill
-
-
-

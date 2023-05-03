@@ -1,12 +1,12 @@
-import pickle
 from robot_env import MyRobot, print_object_dicts
+import numpy as np
 
 
 if __name__ == "__main__":
     robot = MyRobot(
         gui=True, grasper=True, clip=True, meshcat_viz=True, magnetic_gripper=True
     )
-    robot.reset("bowl_in_basket")
+    robot.reset("bowl_over_cup")
     # robot.reset("one_object")
 
     obs = robot.get_obs()
@@ -35,25 +35,48 @@ if __name__ == "__main__":
     description, object_dicts = robot.get_scene_description(object_dicts)
     robot.object_dicts = object_dicts
     print_object_dicts(object_dicts)
-    # print(description)
+
+    print("-----------------------------------------------------------------")
+    print(description)
+    print("-----------------------------------------------------------------")
+
+    # //////////////////////////////////////////////////////////////////////////////
+    # To show Grasps for all objects
+    # //////////////////////////////////////////////////////////////////////////////
+
+    # all_grasps = []; all_scores = []
+    # for obj_id in robot.object_dicts:
+    #     grasps, scores = robot.get_grasp(obj_id,  threshold=0.95)
+
+    #     if scores is None:
+    #         print("No grasps to show.")
+
+    #     else:
+    #         all_grasps.append(grasps)
+    #         all_scores.append(scores)
+    #         best_id = np.argmax(scores)
+    #         chosen_grasp = grasps[best_id: best_id+1]
+    #         # chosen_grasp = grasps
+    #         robot.viz.view_grasps(chosen_grasp, name=robot.object_dicts[obj_id]["used_name"].replace(" ", "_"), freq=100)
 
     # //////////////////////////////////////////////////////////////////////////////
     # Custom Plan check
     # //////////////////////////////////////////////////////////////////////////////
-    bowl_id = robot.find("bowl", "lying on the right side of the table")
-    basket_id = robot.find("basket", "lying on the left of the bowl")
+
+
+    # input("wait")
+
+    bowl_id = robot.find("bowl", "lying over the cup")
+    cup_id = robot.find("cup", "lying on the right of the table")
 
     print("id of the object being picked", bowl_id)
     robot.pick(bowl_id, visualize=True)
 
     # robot.pick(bowl_id, visualize=True)
+    bowl_place = [0.7, -0.34, 1.01]
 
-    basket_location = robot.get_location(basket_id)
-    robot.move_arm(basket_location)
+    robot.place(bowl_id, bowl_place)
 
-    # robot.reorient_arm(3.142/4)
-    # input("press enter to continue")
-    # robot.reorient_arm(-3.142/4)
+    # robot.pick(cup_id)
 
-    # input()
-    robot.place(bowl_id, basket_location)
+    robot.update_obs()

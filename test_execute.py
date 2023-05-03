@@ -8,6 +8,7 @@ from skill_learner import ask_for_skill
 #### Small example robot class for testing execution
 ####################################################
 
+
 class TestExecuteRobot(MyRobot):
     def __init__(self):
         super().__init__(

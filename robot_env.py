@@ -126,6 +126,10 @@ class MyRobot(Robot):
             self.viz = None
 
         self.skill_learner = skill_learner
+
+        # dict that contains object_ids that have moved and their approximate new locations
+        # self.objects_moved = {}
+
         self.load_primitives()
 
     def reset(self, task_name):
@@ -335,6 +339,77 @@ class MyRobot(Robot):
 
             return pcd_pts, pcd_rgb
 
+    def update_obs(self):
+        """
+        generate a new object dict and do the matching with the old objects
+        mainly clip crop based matching
+        run object detection, and segmentation and remaps the object ids
+        with the new pcds and new scene descriptors
+        """
+        pass
+
+        obs = self.get_obs()
+        segs, info_dict = self.get_segment_labels_and_embeddings(
+            obs["colors"], obs["depths"], self.clip
+        )
+
+        object_dicts = self.get_segmented_pcd(
+            obs["colors"],
+            obs["depths"],
+            segs,
+            remove_floor_ht=1.0,
+            std_threshold=0.02,
+            label_infos=info_dict,
+            visualization=True,
+            process_pcd_fn=self.crop_pcd,
+        )
+
+        description, new_object_dicts = self.get_scene_description(object_dicts)
+        print("New scene description:", description)
+
+        new_obj_lst = list(new_object_dicts.keys())
+        current_obj_lst = list(self.object_dicts.keys())
+
+        if len(new_obj_lst) != len(current_obj_lst):
+            print("the predictions in new observation don't match")
+            print("Resetting the object dicts")
+            self.object_dicts = new_object_dicts
+            return
+
+        print("New lst:", new_obj_lst)
+        print("Cur lst:", current_obj_lst)
+
+        new_embeddings = [np.mean(new_object_dicts[oid]["embed"], axis=0) for oid in new_obj_lst]
+        current_embeddings = [
+            np.mean(self.object_dicts[oid]["embed"], axis=0) for oid in current_obj_lst
+        ]
+
+        
+        matches = np.array(current_embeddings) @ np.array(new_embeddings).T
+        print(matches)
+
+        indices = np.argmax(matches, axis=1)
+        print(indices)
+
+        mappings = []
+        print("matchings are as follows")
+        for idx, oid in enumerate(current_obj_lst):
+            mappings.append((oid, new_obj_lst[indices[idx]]))
+            print(oid, new_obj_lst[indices[idx]])
+
+        if (len(np.unique(indices)) == len(indices)):
+            print("all good")
+            for cid, nid in mappings:
+                self.object_dicts[cid] = new_object_dicts[nid]
+
+        else:
+            # TODO: resolve the conflict
+            self.object_dicts = new_object_dicts
+
+        return
+        
+
+
     def get_segment_labels_and_embeddings(self, colors, depths, clip_):
         # for each rgb image, returns a segmented image, and
         # a dict containing the labels for each segment id
@@ -342,12 +417,15 @@ class MyRobot(Robot):
         # instances of the category as well.
 
         # ////////////////////////////////////////////////////////////////
+        import cv2
         segs = self.sim_dict["segs"]
 
         image_embeddings = []
 
+        # count = 0
         for s, c in zip(segs, colors):
             unique_ids = np.unique(s.astype(int))
+            unique_ids = unique_ids[unique_ids >= 0]
             image_crops = []
             for uid in unique_ids:
                 mask = s == uid
@@ -355,6 +433,13 @@ class MyRobot(Robot):
                 r1, c1, r2, c2 = bb
                 # print(r1, c1, r2, c2)
                 crop = c[r1 : r2 + 1, c1 : c2 + 1, :]
+
+                # print("crop max", np.max(crop))
+                # cv2.imwrite(f"crop{count}.png", crop.astype(np.uint8))
+                # count += 1
+                # cv2.imshow("crops", crop)
+                # cv2.waitKey(0)
+
                 image_crops.append(crop)
             embeddings = clip_.get_image_embeddings(image_crops)
             embedding_dict = {
@@ -379,7 +464,6 @@ class MyRobot(Robot):
                 print(mask_id, ":", d[mask_id]["label"])
         # ////////////////////////////////////////////////////////////////
         return segs, image_embeddings
-
 
     def get_segmap(self, xyzs=None, segs=None, pixel_size=0.003125):
         # hmap, segmap = utils.get_heightmap(xyzs, segs, self.table_bounds, pixel_size)
@@ -422,8 +506,6 @@ class MyRobot(Robot):
         hmap = hmap.T
         segmap = segmap[:, :, 0].T
         return hmap, segmap
-    
-
 
     def get_segmented_pcd(
         self,
@@ -631,12 +713,14 @@ class MyRobot(Robot):
 
         return description, object_dicts
 
-
     def get_grasp(self, obj_id, threshold=0.85, add_floor=None, visualize=False):
         combined_pcds = []
         combined_masks = []
 
         for oid in self.object_dicts:
+            # if oid in self.objects_moved:
+            #     pcd = self.object_dicts[oid]["pcd"][self.objects_moved[oid]]
+            # else:
             pcd = self.object_dicts[oid]["pcd"]
             mask = np.ones(len(pcd)) if oid == obj_id else np.zeros(len(pcd))
 
@@ -681,10 +765,11 @@ class MyRobot(Robot):
 
         return pred_grasps, pred_success
 
-
-
-    def possible_place_positions(self, obj_id):
+    def get_place_position(self, place_obj_id, place_description):
         pass
+
+    def get_place_position_old(self, place_obj, place_description):
+        obs = self.get_obs()
         xyzs, colors, segs = self.get_pointcloud(obs)
         mask_id = self.object_dicts[obj_id]["mask_id"]
         valid = (segs[:, 0] != 1) & (segs[:, 0] != mask_id)
@@ -827,7 +912,7 @@ class MyRobot(Robot):
 
     def reorient_object(self, obj_id, angle):
         # move to pos1
-        self.arm.rot_ee_xyz(angle, 'x')
+        self.arm.rot_ee_xyz(angle, "x")
 
     def place(self, obj_id, position):
         if len(position) == 2:

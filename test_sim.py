@@ -12,7 +12,7 @@ if __name__ == "__main__":
     robot = MyRobot(
         gui=True, grasper=True, clip=True, meshcat_viz=False, magnetic_gripper=True
     )
-    robot.reset("cup_over_bowl")
+    robot.reset("bowl_in_basket")
     # robot.reset("one_object")
 
     obs = robot.get_obs()
