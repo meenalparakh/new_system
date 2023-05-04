@@ -137,6 +137,59 @@ class BowlOverCup:
             self.robot.pb_client.stepSimulation()
 
 
+class BowlsInBin:
+    def __init__(self, robot):
+        self.robot = robot
+        self.task_name = "bowls_in_bin"
+
+    def reset(self):
+
+        bowl_id = self.robot.pb_client.load_urdf(
+            ASSET_LOCATION
+            + "shapenet_objects/02880940/4b32d2c623b54dd4fe296ad57d60d898/models/model_normalized.urdf",
+            base_pos=[0.3, 0.18, 1.21],
+            base_ori=[np.pi / 2, 0, 0, 1],
+            scaling=0.2,
+            useFixedBase=False,
+        )
+        self.robot.pb_client.changeDynamics(bowl_id, 1, mass=0.1, lateralFriction=10.0)
+
+        tray_quat = R.from_euler("xyz", [np.pi / 2, 0, 0]).as_quat()
+        print("tray quat", tray_quat)
+
+        tray_id = self.robot.pb_client.load_urdf(
+            ASSET_LOCATION
+            + "shapenet_objects/02801938/3ebac03588e8a43450da8b99982a3057/models/model_normalized.urdf",
+            base_pos=[0.7, -0.34, 1.01],
+            base_ori=tray_quat,
+            scaling=0.5,
+            useFixedBase=True,
+        )
+        self.robot.pb_client.changeDynamics(tray_id, 1, mass=0.2, lateralFriction=2.0)
+
+        for i in range(2):
+            self.robot.sim_dict["object_dicts"][i] = {
+                "name": "unknonwn",
+                "used_name": "unknown",
+                "mask_id": None,
+                "object_center": None,
+                "pixel_center": None,
+                "contains": set(),
+                "edges": set(),
+                "lies_over": set(),
+                "lies_below": set(),
+            }
+
+
+        self.robot.sim_dict["object_dicts"][0]["name"] = "bowl"
+        self.robot.sim_dict["object_dicts"][0]["mask_id"] = bowl_id
+
+        self.robot.sim_dict["object_dicts"][1]["name"] = "tray"
+        self.robot.sim_dict["object_dicts"][1]["mask_id"] = tray_id
+
+        for _ in range(1000):
+            self.robot.pb_client.stepSimulation()
+
 class OneObject:
     def __init__(self, robot):
         self.robot = robot
@@ -173,6 +226,7 @@ class OneObject:
 
 task_lst = {
     "bowl_in_basket": BowlNBasket,
+    "bowls_in_bin": BowlsInBin,
     "bowl_over_cup": BowlOverCup,
     "one_object": OneObject,
 }

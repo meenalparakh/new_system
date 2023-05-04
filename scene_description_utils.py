@@ -522,5 +522,6 @@ def get_place_description(object_dicts, obj_lst, place_center):
     obj_pixel_center = obj_info["object_center"]
     direction_vector = place_center[:2] - obj_pixel_center[:2]
     labels = get_direction_label(direction_vector, obj_info["used_name"])
-    label = random.choice(labels)
+    # label = random.choice(labels)
+    label = labels[0]
     return label

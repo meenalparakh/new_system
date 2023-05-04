@@ -9,19 +9,30 @@ import open3d
 import numpy as np
 import distinctipy as dp
 from heuristics import get_relation
-from scene_description_utils import construct_graph, graph_traversal, text_description
+from scene_description_utils import construct_graph, graph_traversal, text_description, get_place_description
 from grasping.eval import initialize_net, cgn_infer
 from magnetic_gripper import MagneticGripper
 from scipy.spatial.transform import Rotation as R
 from grasp import control_robot
 from visualize_pcd import VizServer
-
+import cv2
+import random
 from skill_learner import ask_for_skill
 
 OPP_RELATIONS = {"above": "below", "contained_in": "contains"}
 
 np.random.seed(0)
 
+def pix_to_xyz(pixel, height, bounds, pixel_size, skip_height=False):
+  """Convert from pixel location on heightmap to 3D position."""
+  u, v = pixel
+  x = bounds[0, 0] + v * pixel_size
+  y = bounds[1, 0] + u * pixel_size
+  if not skip_height:
+    z = bounds[2, 0] + height[u, v]
+  else:
+    z = 0.0
+  return (x, y, z)
 
 def print_object_dicts(object_dict, ks=["label", "relation", "desc", "used_name"]):
     for id, info in object_dict.items():
@@ -421,7 +432,7 @@ class MyRobot(Robot):
         # instances of the category as well.
 
         # ////////////////////////////////////////////////////////////////
-        import cv2
+        # import cv2
         segs = self.sim_dict["segs"]
 
         image_embeddings = []
@@ -445,6 +456,7 @@ class MyRobot(Robot):
                 # cv2.waitKey(0)
 
                 image_crops.append(crop)
+
             embeddings = clip_.get_image_embeddings(image_crops)
             embedding_dict = {
                 unique_ids[idx]: {"embedding": embeddings[idx]}
@@ -468,48 +480,6 @@ class MyRobot(Robot):
                 print(mask_id, ":", d[mask_id]["label"])
         # ////////////////////////////////////////////////////////////////
         return segs, image_embeddings
-
-    def get_segmap(self, xyzs=None, segs=None, pixel_size=0.003125):
-        # hmap, segmap = utils.get_heightmap(xyzs, segs, self.table_bounds, pixel_size)
-
-        bounds = self.table_bounds
-        width = int(np.round((bounds[0, 1] - bounds[0, 0]) / pixel_size))
-        height = int(np.round((bounds[1, 1] - bounds[1, 0]) / pixel_size))
-        heightmap = np.zeros((height, width), dtype=np.float32)
-
-        if segs.shape[-1] != 1:
-            segs = segs[..., None]
-
-        segmap = np.zeros((height, width, segs.shape[-1]), dtype=np.uint8)
-
-        # Filter out 3D points that are outside of the predefined bounds.
-        ix = (points[Ellipsis, 0] >= bounds[0, 0]) & (
-            points[Ellipsis, 0] < bounds[0, 1]
-        )
-        iy = (points[Ellipsis, 1] >= bounds[1, 0]) & (
-            points[Ellipsis, 1] < bounds[1, 1]
-        )
-        iz = (points[Ellipsis, 2] >= bounds[2, 0]) & (
-            points[Ellipsis, 2] < bounds[2, 1]
-        )
-        valid = ix & iy & iz
-        points = points[valid]
-        segs = segs[valid]
-
-        # Sort 3D points by z-value, which works with array assignment to simulate
-        # z-buffering for rendering the heightmap image.
-        iz = np.argsort(points[:, -1])
-        points, segs = points[iz], segs[iz]
-        px = np.int32(np.floor((points[:, 0] - bounds[0, 0]) / pixel_size))
-        py = np.int32(np.floor((points[:, 1] - bounds[1, 0]) / pixel_size))
-        px = np.clip(px, 0, width - 1)
-        py = np.clip(py, 0, height - 1)
-        heightmap[py, px] = points[:, 2] - bounds[2, 0]
-        segmap[py, px, 0] = segs[:, 0]
-
-        hmap = hmap.T
-        segmap = segmap[:, :, 0].T
-        return hmap, segmap
 
     def get_segmented_pcd(
         self,
@@ -769,72 +739,6 @@ class MyRobot(Robot):
 
         return pred_grasps, pred_success
 
-    def get_place_position(self, place_obj_id, place_description):
-        pass
-
-    def get_place_position_old(self, place_obj, place_description):
-        obs = self.get_obs()
-        xyzs, colors, segs = self.get_pointcloud(obs)
-        mask_id = self.object_dicts[obj_id]["mask_id"]
-        valid = (segs[:, 0] != 1) & (segs[:, 0] != mask_id)
-        xyzs = xyzs[valid]
-        colors = colors[valid]
-        segs = segs[valid]
-
-        xyzs = []
-        for oid in self.object_dicts:
-            if obj_id == oid:
-                continue
-
-            pcd = self.object_dicts[oid]["pcd"]
-            xyzs.append(pcd)
-
-        xyzs = np.concatenate(xyzs, axis=0)
-        segs = np.ones((len(xyzs), 1))
-
-        _, _, segmap = self.get_segmap(xyzs=xyzs, segs=segs)
-
-        empty_space = segmap == 0
-        cv2_array = (empty_space * 255).astype(np.uint8)
-        radius = 50
-        kernel = np.ones((radius, radius), np.uint8)
-        empty_space = cv2.erode(cv2_array, kernel, iterations=1)
-        mask = np.zeros_like(empty_space)
-        mask[radius:-radius, radius:-radius] = 255
-        empty_space = empty_space & mask
-        empty_space = np.where(empty_space > 100)
-
-        # empty_space = np.where(segmap == self.table_id)
-        # print(empty_space)
-        k = min(len(empty_space[0]), 10)
-        random_pts = random.sample(range(len(empty_space[0])), k)
-        rows = empty_space[0][random_pts]
-        cols = empty_space[1][random_pts]
-
-        place_descriptions = {}
-
-        obj_lst = list(self.object_dicts.keys())
-        obj_lst.remove(obj_id)
-
-        for r, c in zip(rows, cols):
-            xyz = utils.pix_to_xyz(
-                (c, r), 0, self.bounds, self.pixel_size, skip_height=True
-            )
-            # print("xyz point", xyz[:2])
-            label = get_place_description(self.object_dicts, obj_lst, xyz[:2])
-            if label in place_descriptions:
-                place_descriptions[label].append(xyz[:2])
-            else:
-                place_descriptions[label] = [xyz[:2]]
-
-        for obj_idx in obj_lst:
-            obj_info = self.object_dicts[obj_idx]
-            obj_location = obj_info["object_center"]
-            label = "over the " + obj_info["name"]
-            place_descriptions[label] = [obj_location[:2]]
-
-        self.object_dicts[obj_id]["place_positions"] = place_descriptions
-        return place_descriptions
 
     def pick(self, obj_id, visualize=False):
         # self.obs_lst.append(self.get_obs())
@@ -893,13 +797,6 @@ class MyRobot(Robot):
 
         print("Pick completed")
 
-    # def pick_sim(self, obj_id):
-    #     pos, ori = self.pb_client.getBasePositionAndOrientation(obj_id)
-    #     pos = [0.5, -1.0, ]
-    #     self.pb_client.resetBasePositionAndOrientation(obj_id, pos, ori)
-
-    # def place_sim(self, obj_id, position):
-    #     pass
 
     def move_arm(self, pos1, pos2=None):
         # move to pos1
@@ -918,7 +815,146 @@ class MyRobot(Robot):
         # move to pos1
         self.arm.rot_ee_xyz(angle, "x")
 
-    def place(self, obj_id, position):
+    def get_segmap(self, object_dicts=None, to_ignore=[], bounds=None, pixel_size=0.003125):
+
+        if object_dicts is None:
+            object_dicts = self.object_dicts
+
+        if bounds is None:
+            bounds = self.table_bounds
+
+        pcds, segs = [], []
+
+        for oid in object_dicts:
+            assert oid > 0, "error: the object ids start with zero?"
+
+            if oid in to_ignore:
+                continue
+            p = (object_dicts[oid]["pcd"])
+            m = np.ones(len(p)) * oid
+
+            pcds.append(p)
+            segs.append(m)
+
+        pcds = np.concatenate(pcds, axis=0)
+        segs = np.concatenate(segs, axis=0)
+        # segs = segs[..., None]
+
+        width = int(np.round((bounds[0, 1] - bounds[0, 0]) / pixel_size))
+        height = int(np.round((bounds[1, 1] - bounds[1, 0]) / pixel_size))
+
+        heightmap = np.zeros((height, width), dtype=np.float32)
+        segmap = np.zeros((height, width), dtype=int)
+
+        # Filter out 3D points that are outside of the predefined bounds.
+        ix = (pcds[Ellipsis, 0] >= bounds[0, 0]) & (
+            pcds[Ellipsis, 0] < bounds[0, 1]
+        )
+        iy = (pcds[Ellipsis, 1] >= bounds[1, 0]) & (
+            pcds[Ellipsis, 1] < bounds[1, 1]
+        )
+        iz = (pcds[Ellipsis, 2] >= bounds[2, 0]) & (
+            pcds[Ellipsis, 2] < bounds[2, 1]
+        )
+        
+        valid = ix & iy & iz
+
+        # checking that all the pcds lie inside table bounds 
+        if np.sum(1-valid) != 0:
+            print("Warning: not all pcd boints lie inside table bounds!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!")
+
+        pcds = pcds[valid]
+        segs = segs[valid]
+
+        # Sort 3D points by z-value, which works with array assignment to simulate
+        # z-buffering for rendering the heightmap image.
+        iz = np.argsort(pcds[:, -1])
+        pcds, segs = pcds[iz], segs[iz]
+        px = np.int32(np.floor((pcds[:, 0] - bounds[0, 0]) / pixel_size))
+        py = np.int32(np.floor((pcds[:, 1] - bounds[1, 0]) / pixel_size))
+        px = np.clip(px, 0, width - 1)
+        py = np.clip(py, 0, height - 1)
+        heightmap[py, px] = pcds[:, 2] - bounds[2, 0]
+        segmap[py, px] = segs
+
+        heightmap = heightmap.T
+        segmap = segmap.T
+
+        return heightmap, segmap
+    
+    def get_place_position(self, obj_id, place_description):
+
+        place_locations = {}
+
+        # get place positions lying above other objects
+        for oid, info in self.object_dicts.items():
+            if oid == obj_id:
+                continue
+            place_pos = info["object_center"]
+            desc = "over " + info["used_name"]
+            place_locations[desc] = [place_pos[:2]]
+
+        # get top down segmap exclusing the obj_id
+        _, segmap = self.get_segmap(self.object_dicts, to_ignore=[obj_id])
+        
+        # sample random points in open spacess
+        empty_space = segmap == 0
+        cv2_array = (empty_space * 255).astype(np.uint8)
+        radius = 50
+        kernel = np.ones((radius, radius), np.uint8)
+        empty_space = cv2.erode(cv2_array, kernel, iterations=1)
+
+        mask = np.zeros_like(empty_space)
+        mask[radius:-radius, radius:-radius] = 255
+        empty_space = empty_space & mask
+        empty_space = np.where(empty_space > 100)
+
+        k = min(len(empty_space[0]), 10)
+        random_pts = random.sample(range(len(empty_space[0])), k)
+        rows = empty_space[0][random_pts]
+        cols = empty_space[1][random_pts]
+
+
+        obj_lst = list(self.object_dicts.keys())
+        obj_lst.remove(obj_id)
+        # find their descriptions 
+        for r, c in zip(rows, cols):
+            xyz = pix_to_xyz(
+                (c, r), 0, self.table_bounds, pixel_size=0.003125, skip_height=True
+            )
+            # print("xyz point", xyz[:2])
+            label = get_place_description(self.object_dicts, obj_lst, xyz[:2])
+            if label in place_locations:
+                place_locations[label].append(xyz[:2])
+            else:
+                place_locations[label] = [xyz[:2]]
+
+        print("possible place locations for", obj_id, self.object_dicts[obj_id]["used_name"], place_locations)
+        
+        n = len(place_locations)
+        txts = list(place_locations.keys())
+        txts.append(place_description)
+
+        print(txts)
+        embeddings = self.clip.get_text_embeddings(txts)
+        
+        possibilities = embeddings[:n]
+        mat1 = embeddings[n:]
+
+        prob = mat1 @ possibilities.T
+        print(prob)
+        idx = np.argmax(prob[0])
+
+        print("Chosen location: ", txts[idx])
+        location = random.choice(place_locations[txts[idx]])
+        print("location", location)
+        return location
+
+        # find the best match among them with place description given in argumnets
+
+    
+
+    def place(self, position):
         if len(position) == 2:
             position = [*position, 0.9]
 
@@ -948,7 +984,7 @@ class MyRobot(Robot):
         # self.arm.eetool.close()
         print("place completed")
 
-        self.update_dicts()
+        # self.update_dicts()
 
     def get_location(self, obj_id):
         obj_pcd = self.object_dicts[obj_id]["pcd"]
@@ -1077,6 +1113,20 @@ pick(object_id)
     Returns: None
 """,
             },
+            "get_place_position": {
+                "fn": self.get_place_position,
+                "description": """
+get_place_position(object_id, place_description)
+    Finds the position to place the object `object_id` at a location described by `place_description`
+    Arguments:
+        object_id: int
+            Id of the object to place
+        place_description: str
+            a string that describes the place position in relation to other objects.
+            For example, "over objectB", "to the left of objectA", etc.
+    Returns: 3D array
+        the [x, y, z] value for the place location is returned.
+""",
             "place": {
                 "fn": self.place,
                 "description": """

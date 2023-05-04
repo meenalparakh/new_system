@@ -4,9 +4,9 @@ import numpy as np
 
 if __name__ == "__main__":
     robot = MyRobot(
-        gui=False, grasper=True, clip=True, meshcat_viz=True, magnetic_gripper=True
+        gui=True, grasper=True, clip=True, meshcat_viz=True, magnetic_gripper=True
     )
-    robot.reset("bowl_over_cup")
+    robot.reset("bowls_in_bin")
     # robot.reset("one_object")
 
     obs = robot.get_obs()
@@ -40,14 +40,6 @@ if __name__ == "__main__":
     print(description)
     print("-----------------------------------------------------------------")
 
-
-    # //////////////////////////////////////////////////////////////////////////////
-    # Checking place options
-    # //////////////////////////////////////////////////////////////////////////////
-
-    bowl_id = robot.find("bowl", "lying over the cup")
-    robot.get_place_position(bowl_id, "above the cup")
-
     # //////////////////////////////////////////////////////////////////////////////
     # To show Grasps for all objects
     # //////////////////////////////////////////////////////////////////////////////
@@ -72,19 +64,22 @@ if __name__ == "__main__":
     # //////////////////////////////////////////////////////////////////////////////
 
 
-    input("wait")
+    while True:
+        robot.pb_client.stepSimulation()
 
-    bowl_id = robot.find("bowl", "lying over the cup")
-    cup_id = robot.find("cup", "lying on the right of the table")
+    # input("wait")
 
-    print("id of the object being picked", bowl_id)
-    robot.pick(bowl_id, visualize=True)
+    # bowl_id = robot.find("bowl", "lying over the cup")
+    # cup_id = robot.find("cup", "lying on the right of the table")
 
+    # print("id of the object being picked", bowl_id)
     # robot.pick(bowl_id, visualize=True)
-    bowl_place = [0.7, -0.34, 1.01]
 
-    robot.place(bowl_id, bowl_place)
+    # # robot.pick(bowl_id, visualize=True)
+    # bowl_place = [0.7, -0.34, 1.01]
 
-    # robot.pick(cup_id)
+    # robot.place(bowl_id, bowl_place)
 
-    robot.update_obs()
+    # # robot.pick(cup_id)
+
+    # robot.update_obs()
