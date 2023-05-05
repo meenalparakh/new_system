@@ -153,6 +153,19 @@ def get_plan_loop(
         response = llm(verbal_query_template)
         return response
 
+# def get_plan_feedback(
+#     scene_feedback,
+#     task_prompt,
+#     llm,
+#     function_name,
+#     primitives_lst,
+#     primitives_description,
+#     code_rectification=False,
+#     first_run=True,
+#     verbal_query=False,
+#     ask_plan=False,
+# ):
+#     pass
 
 def execute_plan(robot, task_name, code_rectified):
     # primitives = robot.get_primitives()
@@ -193,3 +206,4 @@ def execute_plan_new(robot, task_name, code_rectified, prev_code_str=""):
     print("code executed")
 
     return context_str + code_rectified
+
