@@ -364,7 +364,7 @@ class MyRobot(Robot):
             obs["colors"], obs["depths"], self.clip
         )
 
-        object_dicts = self.get_segmented_pcd(
+        new_object_dicts = self.get_segmented_pcd(
             obs["colors"],
             obs["depths"],
             segs,
@@ -375,53 +375,103 @@ class MyRobot(Robot):
             process_pcd_fn=self.crop_pcd,
         )
 
-        description, new_object_dicts = self.get_scene_description(object_dicts)
-        print("New scene description:", description)
-
+        reset = False
         new_obj_lst = list(new_object_dicts.keys())
-        current_obj_lst = list(self.object_dicts.keys())
-
-        if len(new_obj_lst) != len(current_obj_lst):
-            print("the predictions in new observation don't match")
-            print("Resetting the object dicts")
-            self.object_dicts = new_object_dicts
-            return
-
-        print("New lst:", new_obj_lst)
-        print("Cur lst:", current_obj_lst)
-
-        new_embeddings = [np.mean(new_object_dicts[oid]["embed"], axis=0) for oid in new_obj_lst]
-        current_embeddings = [
-            np.mean(self.object_dicts[oid]["embed"], axis=0) for oid in current_obj_lst
-        ]
-
-        
-        matches = np.array(current_embeddings) @ np.array(new_embeddings).T
-        print(matches)
-
-        indices = np.argmax(matches, axis=1)
-        print(indices)
-
-        mappings = []
-        print("matchings are as follows")
-        for idx, oid in enumerate(current_obj_lst):
-            mappings.append((oid, new_obj_lst[indices[idx]]))
-            print(oid, new_obj_lst[indices[idx]])
-
-        if (len(np.unique(indices)) == len(indices)):
-            print("all good")
-            for cid, nid in mappings:
-
-                self.viz.view_pcd(self.object_dicts[cid]["pcd"], name=f"current_{cid}")
-                self.viz.view_pcd(new_object_dicts[cid]["pcd"], name=f"new_{nid}")
-
-                self.object_dicts[cid] = new_object_dicts[nid]
+        if len(new_obj_lst) != len(self.object_dicts): 
+            print("number of objects in the scene are different, resetting the dict")
+            reset = True
 
         else:
-            # TODO: resolve the conflict
+
+            new_obj_centers = [new_object_dicts[oid]["pcd"].mean(axis=0) for oid in new_obj_lst]
+            new_obj_centers = np.array(new_obj_centers)
+
+            possible_matchings = []
+            matched_new = []
+            matched_old = []
+            not_matched = []
+            for oid, info in self.object_dicts.items():
+                pcd_val = info["pcd"]
+                try:
+                    center = np.mean(pcd_val, axis=0)
+                    idx = np.argmin(np.linalg.norm(new_obj_centers - center, axis=1))
+                    nid = new_obj_lst[idx]
+                    possible_matchings.append((oid, nid))
+                    matched_new.append(nid)
+                    matched_old.append(oid)
+                except:
+                    # continue
+                    not_matched.append(oid)
+            
+            if len(matched_new) == len(np.unique(matched_new)):
+                print("unique matching found")
+                k = list(set(new_obj_lst).difference(set(matched_new)))
+                possible_matchings.append((not_matched[0], k[0]))
+                for cid, nid in possible_matchings:
+                    self.object_dicts[cid]["pcd"] = new_object_dicts[nid]["pcd"]
+
+                description, self.object_dicts = self.get_scene_description(self.object_dicts, change_uname=False)
+
+            else:
+                print("Objects could not be uniquely matched. Resetting the dict")
+                reset = True
+
+
+        if reset:
             self.object_dicts = new_object_dicts
+            description, new_object_dicts = self.get_scene_description(self.object_dicts)
+
+        print(description)
 
         return
+
+        # description, new_object_dicts = self.get_scene_description(object_dicts)
+        # print("New scene description:", description)
+
+        # new_obj_lst = list(new_object_dicts.keys())
+        # current_obj_lst = list(self.object_dicts.keys())
+
+        # if len(new_obj_lst) != len(current_obj_lst):
+        #     print("the predictions in new observation don't match")
+        #     print("Resetting the object dicts")
+        #     self.object_dicts = new_object_dicts
+        #     return
+
+        # print("New lst:", new_obj_lst)
+        # print("Cur lst:", current_obj_lst)
+
+        # new_embeddings = [np.mean(new_object_dicts[oid]["embed"], axis=0) for oid in new_obj_lst]
+        # current_embeddings = [
+        #     np.mean(self.object_dicts[oid]["embed"], axis=0) for oid in current_obj_lst
+        # ]
+
+        
+        # matches = np.array(current_embeddings) @ np.array(new_embeddings).T
+        # print(matches)
+
+        # indices = np.argmax(matches, axis=1)
+        # print(indices)
+
+        # mappings = []
+        # print("matchings are as follows")
+        # for idx, oid in enumerate(current_obj_lst):
+        #     mappings.append((oid, new_obj_lst[indices[idx]]))
+        #     print(oid, new_obj_lst[indices[idx]])
+
+        # if (len(np.unique(indices)) == len(indices)):
+        #     print("all good")
+        #     for cid, nid in mappings:
+
+        #         self.viz.view_pcd(self.object_dicts[cid]["pcd"], name=f"current_{cid}")
+        #         self.viz.view_pcd(new_object_dicts[cid]["pcd"], name=f"new_{nid}")
+
+        #         self.object_dicts[cid] = new_object_dicts[nid]
+
+        # else:
+        #     # TODO: resolve the conflict
+        #     self.object_dicts = new_object_dicts
+
+        # return
         
 
 
@@ -650,7 +700,7 @@ class MyRobot(Robot):
 
         return objects
 
-    def get_scene_description(self, object_dicts):
+    def get_scene_description(self, object_dicts, change_uname=True):
         obj_ids_lst = list(object_dicts.keys())
 
         # ////////////////////////////////////////////////////////////////////////
@@ -683,7 +733,8 @@ class MyRobot(Robot):
         object_dicts, new_obj_lst = construct_graph(object_dicts)
         side = "right"
         traversal_order, path = graph_traversal(object_dicts, new_obj_lst, side=side)
-        description = text_description(object_dicts, traversal_order, path, side=side)
+        description = text_description(object_dicts, traversal_order, path, side=side, 
+                                       change_uname=change_uname)
 
         return description, object_dicts
 
@@ -763,6 +814,9 @@ class MyRobot(Robot):
         grasp_pose = pred_grasps[grasp_idx]
 
         self.pick_given_pose(grasp_pose)
+        self.arm.go_home()
+        self.object_dicts[obj_id]["pcd"] = "in_air"
+
 
     def pick_given_pose(self, pick_pose, translate=0.13):
         self.gripper.release()
@@ -783,7 +837,7 @@ class MyRobot(Robot):
             pose,
             robot_category="franka",
             control_mode="linear",
-            move_up=0.05,
+            move_up=0.01,
             linear_offset=-0.01,
         )
         # self.obs_lst.append(self.get_obs())
@@ -953,8 +1007,16 @@ class MyRobot(Robot):
         # find the best match among them with place description given in argumnets
 
     
+    def place(self, obj_id, position):
 
-    def place(self, position):
+        pcd_val = self.object_dicts[obj_id]["pcd"]
+
+        if isinstance(pcd_val, str) and pcd_val == "in_air":
+            print("The object is in grasp")
+        else:
+            print("The intended object needs to be grasped first. Returning")
+            return
+
         if len(position) == 2:
             position = [*position, 0.9]
 
@@ -978,6 +1040,9 @@ class MyRobot(Robot):
 
         self.arm.move_ee_xyz([0, 0, 0.15])
         self.arm.go_home()
+
+        self.object_dicts[obj_id]["pcd"] = ("changed", position)
+
         # current_position = self.arm.get_ee_pose()[0]
         # self.arm.move_ee_xyz(preplace_position-current_position)
         # # self.arm.set_ee_pose(pos=preplace_position)
@@ -1127,6 +1192,7 @@ get_place_position(object_id, place_description)
     Returns: 3D array
         the [x, y, z] value for the place location is returned.
 """,
+            },
             "place": {
                 "fn": self.place,
                 "description": """

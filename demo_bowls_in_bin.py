@@ -64,22 +64,23 @@ if __name__ == "__main__":
     # //////////////////////////////////////////////////////////////////////////////
 
 
-    while True:
-        robot.pb_client.stepSimulation()
+    first_bowl_id = robot.find("first bowl", "lying to the right")
 
-    # input("wait")
+    robot.pick(first_bowl_id, visualize=True)
+    bowl_place_pos = robot.get_place_position(first_bowl_id, "on the tray")
+    robot.place(first_bowl_id, bowl_place_pos)
 
-    # bowl_id = robot.find("bowl", "lying over the cup")
-    # cup_id = robot.find("cup", "lying on the right of the table")
+    robot.update_dicts()
+
+
 
     # print("id of the object being picked", bowl_id)
     # robot.pick(bowl_id, visualize=True)
 
-    # # robot.pick(bowl_id, visualize=True)
-    # bowl_place = [0.7, -0.34, 1.01]
+    # robot.place(bowl_id, bowl_place_pos)
+    # robot.update_dicts()
 
-    # robot.place(bowl_id, bowl_place)
-
-    # # robot.pick(cup_id)
-
-    # robot.update_obs()
+    # robot.pick(cup_id, visualize=True)
+    # cup_place_pos = robot.get_place_position(cup_id, "over the bowl")
+    # robot.place(cup_id, cup_place_pos)
+    # robot.update_dicts()

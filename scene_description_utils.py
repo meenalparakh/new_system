@@ -349,7 +349,7 @@ def get_direction_label(direction_vector, obj_name):
         return result
 
 
-def text_description(object_dicts, traversal_order, path, side="right"):
+def text_description(object_dicts, traversal_order, path, side="right", change_uname=True):
     # traversal_order, path = graph_traversal(object_dicts, new_obj_lst, side=side)
     path = copy(path)
     object_names = []
@@ -377,32 +377,34 @@ def text_description(object_dicts, traversal_order, path, side="right"):
     combined, name_lst, counts = join_objects(
         object_names, return_counts=True, prefix="default"
     )
-    current_count = {name: 0 for name in name_lst}
-    for obj_id in traversal_order:
-        name = object_dicts[obj_id]["label"][0]
-        print("P name:", name)
-        count = counts[name_lst.index(name)]
-        if count == 1:
-            object_dicts[obj_id]["used_name"] = "the " + name
-        else:
-            object_dicts[obj_id]["used_name"] = (
-                "the " + count_prefixes[current_count[name]] + " " + name
-            )
-            current_count[name] += 1
 
-        contained_lst = object_dicts[obj_id]["relation"].get("contains", [])
-        above_lst = object_dicts[obj_id]["relation"].get("below", [])
-        for child_id in contained_lst + above_lst:
-            name = object_dicts[child_id]["label"][0]
-            print("C name:", name)
+    if change_uname:
+        current_count = {name: 0 for name in name_lst}
+        for obj_id in traversal_order:
+            name = object_dicts[obj_id]["label"][0]
+            print("P name:", name)
             count = counts[name_lst.index(name)]
             if count == 1:
-                object_dicts[child_id]["used_name"] = "the " + name
+                object_dicts[obj_id]["used_name"] = "the " + name
             else:
-                object_dicts[child_id]["used_name"] = (
+                object_dicts[obj_id]["used_name"] = (
                     "the " + count_prefixes[current_count[name]] + " " + name
                 )
                 current_count[name] += 1
+
+            contained_lst = object_dicts[obj_id]["relation"].get("contains", [])
+            above_lst = object_dicts[obj_id]["relation"].get("below", [])
+            for child_id in contained_lst + above_lst:
+                name = object_dicts[child_id]["label"][0]
+                print("C name:", name)
+                count = counts[name_lst.index(name)]
+                if count == 1:
+                    object_dicts[child_id]["used_name"] = "the " + name
+                else:
+                    object_dicts[child_id]["used_name"] = (
+                        "the " + count_prefixes[current_count[name]] + " " + name
+                    )
+                    current_count[name] += 1
 
     for obj_id in object_dicts:
         print(object_dicts[obj_id]["label"])
