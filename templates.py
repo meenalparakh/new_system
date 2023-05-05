@@ -31,7 +31,7 @@ Write a python function `TASK_NAME()` using the above API function calls to COMM
     "verbal_query": """SCENE_DESCRIPTION\n\nQUERY
 """,
     # ////////////////////////////////////////////////////////////////////////////////////////////////////////
-    "feedback_code_query": """We want to execute the task on the robot and need code to do so. We have an API consisting of the following functions: PRIMITIVES_LST. You can ask for new skills using the function `learn_skill`, in case the skills mentioned before are not sufficient to complete the task. Assume the relevant objects are within robot's arm's reach.
+    "feedback_code_query": """We want to execute the above task on the robot and need code to do so. We have an API consisting of the following functions: PRIMITIVES_LST. You can ask for new skills using the function `learn_skill`, in case the skills mentioned before are not sufficient to complete the task. Assume the relevant objects are within robot's arm's reach.
 PRIMITIVES_DESCRIPTION
 The robot will be performing one action at a time. So convert the above steps into a python code but only one chunk at a time. After every action that changes the scene (such as pick, place, etc), wait for human to describe what happened and then write the next piece of code. Now get started!
 """

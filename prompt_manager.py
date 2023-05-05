@@ -8,7 +8,7 @@ def replace(input_str, replacements):
     return input_str
 
 
-def extract_code_from_str(response_str, fn_name):
+def extract_code_from_str(response_str, fn_name=None):
     first_occurrence = response_str.find("```")
     assert first_occurrence >= 0
 
@@ -23,6 +23,9 @@ def extract_code_from_str(response_str, fn_name):
 
     elts = code.split("python\n")
     result = "".join(elts)
+
+    if fn_name is None:
+        return result
 
     first_occurence_fn = result.find(f"{fn_name}()")
     assert first_occurence_fn >= 0
@@ -153,19 +156,6 @@ def get_plan_loop(
         response = llm(verbal_query_template)
         return response
 
-# def get_plan_feedback(
-#     scene_feedback,
-#     task_prompt,
-#     llm,
-#     function_name,
-#     primitives_lst,
-#     primitives_description,
-#     code_rectification=False,
-#     first_run=True,
-#     verbal_query=False,
-#     ask_plan=False,
-# ):
-#     pass
 
 def execute_plan(robot, task_name, code_rectified):
     # primitives = robot.get_primitives()

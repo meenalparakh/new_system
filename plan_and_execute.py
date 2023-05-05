@@ -1,5 +1,6 @@
+from prompt_manager import get_plan_loop, execute_plan_new, extract_code_from_str
+from templates import TEMPLATE_DICT
 
-from prompt_manager import get_plan_loop, execute_plan_new
 
 def plan_and_execute(robot, description, chat_module):
     chat_module.start_session("test_run")
@@ -69,5 +70,40 @@ def plan_and_execute(robot, description, chat_module):
         user_input = input("Press enter to continue")
 
 
-def plan_and_execute_feedback(robot, chat_module):
-    pass
+def plan_and_execute_feedback(robot, scene_description, task_prompt, chat_module):
+    command_query = TEMPLATE_DICT["command_template"].replace("PROMPT", task_prompt)
+    command = chat_module.chat(command_query)
+    command = command.replace('"', "")
+    command = command.lower().replace(".", "")
+
+    plan_query = TEMPLATE_DICT["plan_template"].replace(
+        "SCENE_DESCRIPTION", scene_description
+    )
+    plan_query = plan_query.replace("COMMAND", command.lower())
+
+    ####### plan has been obtained #####################################################
+    plan = chat_module.chat(plan_query)
+    ####################################################################################
+
+    feedback_template = (
+        TEMPLATE_DICT["feedback_code_query"]
+        .replace("PRIMITIVES_LST", robot.primitives_lst)
+        .replace(
+            "PRIMITIVES_DESCRIPTION",
+            robot.primitives_description,
+        )
+    )
+
+    ## TODO: Add automatic task completion
+    for i in range(20):
+        response = chat_module.chat(feedback_template)
+        code = extract_code_from_str(response_str=response)
+
+        
+
+
+        
+
+
+
+

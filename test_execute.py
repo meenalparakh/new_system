@@ -166,7 +166,13 @@ def trial_run2():
 if __name__ == "__main__":
     # main()
 
-    robot = MyRobot(gui=False, skill_learner=True)
+    # robot = MyRobot(gui=False, skill_learner=True)
 
-    print(robot.primitives_lst)
-    print(robot.primitives_description)
+    # print(robot.primitives_lst)
+    # print(robot.primitives_description)
+
+    exec("a = 'hello_works'", globals(), globals())
+
+    exec("print(a)", globals(), globals())
+
+    # print(globals())
