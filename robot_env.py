@@ -19,6 +19,13 @@ import cv2
 import random
 from skill_learner import ask_for_skill
 
+'''
+TODO:
+1. copy over update pick function, and planner and execute functions, 
+    and test them for simulation
+2. create demos (may be possible now?)
+'''
+
 OPP_RELATIONS = {"above": "below", "contained_in": "contains"}
 
 np.random.seed(0)
@@ -350,47 +357,34 @@ class MyRobot(Robot):
 
             return pcd_pts, pcd_rgb
 
-    def update_dicts(self):
+    def update_dict_util(self, original_dict, new_dict):
         """
         generate a new object dict and do the matching with the old objects
         mainly clip crop based matching
         run object detection, and segmentation and remaps the object ids
         with the new pcds and new scene descriptors
         """
-        pass
-
-        obs = self.get_obs()
-        segs, info_dict = self.get_segment_labels_and_embeddings(
-            obs["colors"], obs["depths"], self.clip
-        )
-
-        new_object_dicts = self.get_segmented_pcd(
-            obs["colors"],
-            obs["depths"],
-            segs,
-            remove_floor_ht=1.0,
-            std_threshold=0.02,
-            label_infos=info_dict,
-            visualization=True,
-            process_pcd_fn=self.crop_pcd,
-        )
+        
 
         reset = False
-        new_obj_lst = list(new_object_dicts.keys())
-        if len(new_obj_lst) != len(self.object_dicts): 
+        new_obj_lst = list(new_dict.keys())
+        cur_obj_lst = list(original_dict.keys())
+
+
+        if len(new_obj_lst) != len(cur_obj_lst): 
             print("number of objects in the scene are different, resetting the dict")
             reset = True
 
         else:
 
-            new_obj_centers = [new_object_dicts[oid]["pcd"].mean(axis=0) for oid in new_obj_lst]
+            new_obj_centers = [new_dict[oid]["pcd"].mean(axis=0) for oid in new_obj_lst]
             new_obj_centers = np.array(new_obj_centers)
 
             possible_matchings = []
             matched_new = []
             matched_old = []
             not_matched = []
-            for oid, info in self.object_dicts.items():
+            for oid, info in original_dict.items():
                 pcd_val = info["pcd"]
                 try:
                     center = np.mean(pcd_val, axis=0)
@@ -408,72 +402,135 @@ class MyRobot(Robot):
                 k = list(set(new_obj_lst).difference(set(matched_new)))
                 possible_matchings.append((not_matched[0], k[0]))
                 for cid, nid in possible_matchings:
-                    self.object_dicts[cid]["pcd"] = new_object_dicts[nid]["pcd"]
+                    original_dict[cid]["pcd"] = new_dict[nid]["pcd"]
 
-                description, self.object_dicts = self.get_scene_description(self.object_dicts, change_uname=False)
+                description, original_dict = self.scene_gen.get_scene_description(original_dict, change_uname=False)
+
 
             else:
                 print("Objects could not be uniquely matched. Resetting the dict")
                 reset = True
 
-
         if reset:
-            self.object_dicts = new_object_dicts
-            description, new_object_dicts = self.get_scene_description(self.object_dicts)
+            original_dict = new_dict
+            description, original_dict = self.scene_gen.get_scene_description(original_dict)
 
         print(description)
 
-        return
+        return description, original_dict
 
-        # description, new_object_dicts = self.get_scene_description(object_dicts)
-        # print("New scene description:", description)
+    def update_dicts(self):
+        """
+        generate a new object dict and do the matching with the old objects
+        mainly clip crop based matching
+        run object detection, and segmentation and remaps the object ids
+        with the new pcds and new scene descriptors
+        """
+        new_dicts = self.get_object_dicts()
+        current_dict = self.system_env.object_dicts
 
-        # new_obj_lst = list(new_object_dicts.keys())
-        # current_obj_lst = list(self.object_dicts.keys())
 
-        # if len(new_obj_lst) != len(current_obj_lst):
-        #     print("the predictions in new observation don't match")
-        #     print("Resetting the object dicts")
-        #     self.object_dicts = new_object_dicts
-        #     return
+        description, final_dict = self.update_dict_util(current_dict, new_dicts)
+        self.system_env.object_dicts = final_dict
+        return description
 
-        # print("New lst:", new_obj_lst)
-        # print("Cur lst:", current_obj_lst)
+    def check_update_dicts(self):
 
-        # new_embeddings = [np.mean(new_object_dicts[oid]["embed"], axis=0) for oid in new_obj_lst]
-        # current_embeddings = [
-        #     np.mean(self.object_dicts[oid]["embed"], axis=0) for oid in current_obj_lst
-        # ]
-
+        input("press enter after setting the first scene")
+        first_dict = self.get_object_dicts()
+        first_desc, first_dict = self.scene_gen.get_scene_description(first_dict)        
         
-        # matches = np.array(current_embeddings) @ np.array(new_embeddings).T
-        # print(matches)
+        self.system_env.object_dicts = first_dict
 
-        # indices = np.argmax(matches, axis=1)
-        # print(indices)
+        print_object_dicts(first_dict)
 
-        # mappings = []
-        # print("matchings are as follows")
-        # for idx, oid in enumerate(current_obj_lst):
-        #     mappings.append((oid, new_obj_lst[indices[idx]]))
-        #     print(oid, new_obj_lst[indices[idx]])
+        print("first description:", first_desc)
 
-        # if (len(np.unique(indices)) == len(indices)):
-        #     print("all good")
-        #     for cid, nid in mappings:
 
-        #         self.viz.view_pcd(self.object_dicts[cid]["pcd"], name=f"current_{cid}")
-        #         self.viz.view_pcd(new_object_dicts[cid]["pcd"], name=f"new_{nid}")
+        obj_id_to_pick = int(input("enter object_id to pick"))
+        self.pick(obj_id_to_pick)
 
-        #         self.object_dicts[cid] = new_object_dicts[nid]
+        print("feedback queue", self.feedback_queue)
 
-        # else:
-        #     # TODO: resolve the conflict
-        #     self.object_dicts = new_object_dicts
 
-        # return
+        self.place(obj_id_to_pick, np.zeros(2))
+
+        print("feedback queue", self.feedback_queue)
+
+        second_dict= self.get_object_dicts()
+
+        print_object_dicts(second_dict)
+
+        final_desc, final_dict = self.update_dict_util(first_dict, second_dict)
+        print_object_dicts(final_dict)
         
+        for obj_id in final_dict:
+            obj_pcd = final_dict[obj_id]["pcd"]
+            rgb = final_dict[obj_id]["rgb"]
 
+            print(obj_pcd.shape, rgb.shape)
+            name = f"final_{obj_id}"
+            util.meshcat_pcd_show(self.mc_vis, obj_pcd, color=None, name=f"scene/second_{name}_{obj_id}")
+
+
+        obj_id_to_pick = int(input("enter object_id to pick"))
+        self.pick(obj_id_to_pick)
+
+        print("feedback queue", self.feedback_queue)
+
+
+        self.place(obj_id_to_pick, np.zeros(2))
+        print("feedback queue", self.feedback_queue)
+
+        second_dict= self.get_object_dicts()
+
+        print_object_dicts(second_dict)
+
+        final_desc, final_dict = self.update_dict_util(first_dict, second_dict)
+        print_object_dicts(final_dict)
+        
+        for obj_id in final_dict:
+            obj_pcd = final_dict[obj_id]["pcd"]
+            rgb = final_dict[obj_id]["rgb"]
+
+            print(obj_pcd.shape, rgb.shape)
+            name = f"final_{obj_id}"
+            util.meshcat_pcd_show(self.mc_vis, obj_pcd, color=None, name=f"scene/third_{name}_{obj_id}")
+
+    def visualize_object_dicts(self, object_dict):
+        for obj_id in object_dict:
+            pcd = object_dict[obj_id]["pcd"]
+            rgb = object_dict[obj_id]["rgb"]
+            name = object_dict[obj_id]["label"][0]
+            self.viz.view_pcd(pcd, rgb, name=f"{obj_id}_{name}")
+
+    def get_object_dicts(self):
+        obs = self.get_obs()
+        combined_pcds = np.concatenate(obs["pcd"], axis=0)
+
+        # //////////////////////////////////////////////////////////////////////////////
+        # Labelling + segmentation + description
+        # //////////////////////////////////////////////////////////////////////////////
+
+        segs, info_dict = self.get_segment_labels_and_embeddings(
+            obs["colors"], obs["depths"], self.clip, vocabulary='custom', custom_vocabulary="mug,bowl,tray"
+        )
+
+        object_dicts = self.vision_mod.get_segmented_pcd(
+            obs["colors"],
+            obs['depths'],
+            segs,
+            remove_floor_ht=1.0,
+            std_threshold=0.02,
+            label_infos=info_dict,
+            visualization=True,
+            process_pcd_fn=self.vision_mod.crop_pcd,
+        )
+
+        return object_dicts
+
+    def init_dicts(self, object_dicts):
+        self.object_dicts = object_dicts
 
     def get_segment_labels_and_embeddings(self, colors, depths, clip_):
         # for each rgb image, returns a segmented image, and

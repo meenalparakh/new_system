@@ -36,7 +36,7 @@ if __name__ == "__main__":
         robot.clip,
         # vocabulary="lvis"
         vocabulary="custom",
-        custom_vocabulary="mug_handle,mug_body",
+        custom_vocabulary="mug,cup,",
     )
 
     # with open("cached_info.pkl", 'wb') as f:
