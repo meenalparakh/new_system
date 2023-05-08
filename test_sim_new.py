@@ -12,20 +12,7 @@ if __name__ == "__main__":
     robot = MyRobot(
         gui=True, grasper=True, clip=True, meshcat_viz=False, magnetic_gripper=True
     )
-    robot.reset("bowl_in_basket")
-    # robot.reset("one_object")
-
-    obs = robot.get_obs()
-
-    # //////////////////////////////////////////////////////////////////////////////
-    # Visualization of initial point cloud
-    # //////////////////////////////////////////////////////////////////////////////
-
-    combined_pts, combined_rgb = robot.get_combined_pcd(
-        obs["colors"], obs["depths"], idx=None
-    )
-    combined_pts, combined_rgb, _ = robot.crop_pcd(combined_pts, combined_rgb, None)
-    robot.viz.view_pcd(combined_pts, combined_rgb)
+    robot.reset("bowl_over_cup")
 
     # //////////////////////////////////////////////////////////////////////////////
     # Labelling + segmentation + description
@@ -33,28 +20,13 @@ if __name__ == "__main__":
 
     object_dicts = robot.get_object_dicts()
     scene_description, object_dicts = robot.get_scene_description(object_dicts)
-
+    robot.init_dicts(object_dicts)
 
     # //////////////////////////////////////////////////////////////////////////////
     # Visualization of individual object point clouds
     # //////////////////////////////////////////////////////////////////////////////
 
-    print("Number of objects", len(object_dicts))
-    pcds = []
-    colors = []
-    rand_colors = dp.get_colors(len(object_dicts))
-    for idx, obj in enumerate(object_dicts):
-        label = object_dicts[obj]["label"][0]
-        pcd = object_dicts[obj]["pcd"]
-        color = object_dicts[obj]["rgb"]
-
-        robot.viz.view_pcd(pcd, color, f"{idx}_{label}")
-        pcds.append(pcd)
-        colors.append(color)
-
-    pcds = np.vstack(pcds)
-    colors = np.vstack(colors)
-    robot.viz.view_pcd(pcds, colors)
+    robot.visualize_object_dicts(object_dicts)
 
     # //////////////////////////////////////////////////////////////////////////////
     # To show Grasps for all objects
@@ -82,19 +54,20 @@ if __name__ == "__main__":
     # Custom Plan check
     # //////////////////////////////////////////////////////////////////////////////
 
-    bowl_id = robot.find("bowl", "lying on the right side of the table")
-    basket_id = robot.find("basket", "lying on the left of the bowl")
+    # bowl_id = robot.find("bowl", "lying on the right side of the table")
+    # basket_id = robot.find("basket", "lying on the left of the bowl")
 
-    print("id of the object being picked", bowl_id)
-    robot.pick(bowl_id, visualize=False)
+    # print("id of the object being picked", bowl_id)
+    # robot.pick(bowl_id, visualize=False)
 
-    basket_location = robot.get_location(basket_id)
-    robot.place(bowl_id, basket_location)
+    # basket_location = robot.get_location(basket_id)
+    # robot.place(bowl_id, basket_location)
 
     # //////////////////////////////////////////////////////////////////////////////
     # LLM Planning and Execution in Loop
     # //////////////////////////////////////////////////////////////////////////////
 
     chat_module = ChatGPTModule()
-    plan_and_execute(robot, description, chat_module)
+    plan_and_execute(robot, scene_description, chat_module)
+
 

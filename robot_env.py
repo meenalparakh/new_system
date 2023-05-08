@@ -41,13 +41,6 @@ def pix_to_xyz(pixel, height, bounds, pixel_size, skip_height=False):
     z = 0.0
   return (x, y, z)
 
-def print_object_dicts(object_dict, ks=["label", "relation", "desc", "used_name"]):
-    for id, info in object_dict.items():
-        print("Object id", id)
-        for k, v in info.items():
-            if k in ks:
-                print(f"    {k}: {v}")
-        print()
 
 
 def clean_object_pcds(object_dicts):
@@ -152,10 +145,18 @@ class MyRobot(Robot):
         self.new_task = True
         self.load_primitives()
 
+    def start_task(self):
+        self.new_task = False
+
+    def end_task(self):
+        self.new_task = True
+
 
     def get_feedback(self):
-        feedback = " ".join(self.feedback_queue)
+        # feedback = " ".join(self.feedback_queue)
+        feedback = self.feedback_queue[-1]
         return feedback
+    
         # new_scene_description = self.get_scene_description()
         # return feedback + " " + new_scene_description
     
@@ -417,7 +418,7 @@ class MyRobot(Robot):
                 for cid, nid in possible_matchings:
                     original_dict[cid]["pcd"] = new_dict[nid]["pcd"]
 
-                description, original_dict = self.get_scene_description(original_dict, change_uname=False)
+                # description, original_dict = self.get_scene_description(original_dict, change_uname=False)
 
 
             else:
@@ -426,11 +427,14 @@ class MyRobot(Robot):
 
         if reset:
             original_dict = new_dict
-            description, original_dict = self.get_scene_description(original_dict)
+            # description, original_dict = self.get_scene_description(original_dict)
 
-        print(description)
+        # print(description)
 
-        return description, original_dict
+        return original_dict
+
+        # return description, original_dict
+
 
     def update_dicts(self):
         """
@@ -454,6 +458,8 @@ class MyRobot(Robot):
             rgb = object_dict[obj_id]["rgb"]
             name = object_dict[obj_id]["label"][0]
             self.viz.view_pcd(pcd, rgb, name=f"{obj_id}_{name}")
+
+        self.view_pcd(self.bg_pcd, name=f"background")
 
     def get_object_dicts(self):
         obs = self.get_obs()
@@ -481,6 +487,16 @@ class MyRobot(Robot):
 
     def init_dicts(self, object_dicts):
         self.object_dicts = object_dicts
+
+
+    def print_object_dicts(self, object_dict, ks=["label", "relation", "desc", "used_name"]):
+        for id, info in object_dict.items():
+            print("Object id", id)
+            for k, v in info.items():
+                if k in ks:
+                    print(f"    {k}: {v}")
+            print()
+
 
     def get_segment_labels_and_embeddings(self, colors, depths, clip_):
         # for each rgb image, returns a segmented image, and
@@ -706,6 +722,13 @@ class MyRobot(Robot):
             objects = clean_object_pcds(objects)
 
         return objects
+
+    def get_current_scene_description(self):
+        description, _ = self.get_scene_description(self.object_dicts, 
+                                                    change_uname=False)
+        
+        self.feedback_queue.append(description)
+        return description
 
     def get_scene_description(self, object_dicts, change_uname=True):
         obj_ids_lst = list(object_dicts.keys())
@@ -1111,7 +1134,7 @@ class MyRobot(Robot):
             pcd = self.object_dicts[obj_id]["pcd"]
             fn(pcd)
 
-        self.new_skill = new_skill
+        setattr(self, skill_name, new_skill)
 
         self.primitives[skill_name] = {
             "fn": self.new_skill,
@@ -1142,6 +1165,21 @@ class MyRobot(Robot):
 
     def load_primitives(self):
         self.primitives = {
+            "start_task": {
+                "fn": self.start_task,
+                "description": """
+start_task()
+    must be called at the start of any task. It starts the robot.                
+"""
+            },
+            "end_task": {
+                "fn": self.end_task,
+                "description": """
+end_task()
+    must be called when a task completes. It stops the robot.                
+"""
+            },
+
             "find": {
                 "fn": self.find,
                 "description": """
@@ -1170,17 +1208,17 @@ get_location(object_id)
             the location of the object
 """,
             },
-            "move_arm": {
-                "fn": self.move_arm,
-                "description": """
-move_arm(position)
-    Moves to the robotic arm to a location given by position
-    Arguments:
-        position: 3D array
-            the location to move the arm to
-    Returns: None
-""",
-            },
+#             "move_arm": {
+#                 "fn": self.move_arm,
+#                 "description": """
+# move_arm(position)
+#     Moves to the robotic arm to a location given by position
+#     Arguments:
+#         position: 3D array
+#             the location to move the arm to
+#     Returns: None
+# """,
+#             },
             "pick": {
                 "fn": self.pick,
                 "description": """
@@ -1220,14 +1258,19 @@ place(object_id, position)
     Returns: None
 """,
             },
-            "no_action": {
-                "fn": self.no_action,
-                "description": """
-no_action()
-    The function marks the end of a program.
-    Returns: None
-""",
-            },
+#             "place": {
+#                 "fn": self.place,
+#                 "description": """
+# place(object_id_1, object_id_2)
+#     Moves 'object_id_1' over to 'object_id_2'
+#     Arguments:
+#         object_id_1: int
+#             Id of the object to place
+#         object_id_2: int
+#             Id of the object to place relative to
+#     Returns: None
+# """,
+#             },
         }
 
         if self.skill_learner:
