@@ -12,29 +12,62 @@ def extract_code_from_str(response_str, fn_name=None):
     first_occurrence = response_str.find("```")
     assert first_occurrence >= 0
 
-    second_occurrence = response_str.find("```", first_occurrence + 3)
-    assert second_occurrence >= 0
+    total_code = ""
 
-    code = response_str[first_occurrence : second_occurrence + 3]
+    while first_occurrence >= 0:
 
-    python_occurrence = code.find("python")
-    if python_occurrence >= 0:
-        code = "```" + code[6:]
+        second_occurrence = response_str.find("```", first_occurrence + 3)
+        assert second_occurrence >= 0
 
-    elts = code.split("python\n")
-    result = "".join(elts)
+        code = response_str[first_occurrence +3 : second_occurrence]
+
+        python_occurrence = code.find("python")
+        if python_occurrence >= 0:
+            code = "```" + code[6:]
+
+        elts = code.split("python\n")
+        result = "".join(elts)
+
+        total_code += result + "\n"
+
+        response_str = response_str[second_occurrence+3:]
+        first_occurrence = response_str.find("```")
+
+    total_code = "```" + total_code + "```"
 
     if fn_name is None:
-        return result
+        return total_code
 
-    first_occurence_fn = result.find(f"{fn_name}()")
+    first_occurence_fn = total_code.find(f"{fn_name}()")
     assert first_occurence_fn >= 0
 
-    second_occurrence_fn = result.find(f"{fn_name}()", first_occurence_fn + 2)
+    second_occurrence_fn = total_code.find(f"{fn_name}()", first_occurence_fn + 2)
     if second_occurrence_fn < 0:
         return result
 
-    return result[:second_occurrence_fn] + "```"
+    return total_code[:second_occurrence_fn] + "```"
+
+
+def test_extract_code():
+    test_str = """    
+First, we need to find the mug and tray:
+```
+start_task()
+
+mug_id = find("mug", "a ceramic coffee mug")
+tray_id = find("tray", "a rectangular serving tray")
+```
+We have used the find function to locate the mug and tray and stored their IDs for later use. Next, we will pick up the mug:
+```
+pick(mug_id)
+```
+After executing the above code, we need to confirm that the robot has picked up the mug. Once confirmed, we will move onto the next step where we find the location to place the mug in the tray.
+
+"""
+    result = extract_code_from_str(test_str)
+    print(result)
+
+
 
 
 def get_plan(

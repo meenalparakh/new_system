@@ -1,6 +1,6 @@
 import openai
 
-OPENAI_KEY = "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"
+OPENAI_KEY = "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"
 openai.api_key = OPENAI_KEY
 
 import os
@@ -15,7 +15,7 @@ RESPONSE_DIR = "gpt_responses"
 class ChatGPTModule:
     def __init__(self, response_dir=RESPONSE_DIR, mode="online"):
         """
-        allowed mode vals: "human", "online"
+        allowed mode vals: "human", "online", "file"
         """
         self.response_dir = response_dir
         self.mode = mode
@@ -68,16 +68,20 @@ class ChatGPTModule:
                     model="gpt-3.5-turbo", messages=self.message_lst
                 )
             else:
-                human_response_file = input("fname:")
+                if self.mode == "file":
+                    human_response_file = input("fname: ")
 
-                with open(human_response_file, "r") as f:
-                    human_response = f.readlines()
+                    with open(human_response_file, "r") as f:
+                        human_response = f.readlines()
 
-                human_response = "".join(human_response)
+                    human_response = "".join(human_response)
+                else:
+                    human_response = input("Human: ")
+                    
                 response = {
                     "choices": [
                         {
-                            "finish_reason": "done",
+                            "finish_reason": "stop",
                             "message": {"content": human_response},
                         }
                     ]

@@ -148,7 +148,20 @@ class MyRobot(Robot):
         # dict that contains object_ids that have moved and their approximate new locations
         # self.objects_moved = {}
 
+        self.feedback_queue = []
+        self.new_task = True
         self.load_primitives()
+
+
+    def get_feedback(self):
+        feedback = " ".join(self.feedback_queue)
+        return feedback
+        # new_scene_description = self.get_scene_description()
+        # return feedback + " " + new_scene_description
+    
+    def empty_feedback_queue(self):
+        self.feedback_queue = []
+
 
     def reset(self, task_name):
         success = self.arm.go_home()
@@ -404,7 +417,7 @@ class MyRobot(Robot):
                 for cid, nid in possible_matchings:
                     original_dict[cid]["pcd"] = new_dict[nid]["pcd"]
 
-                description, original_dict = self.scene_gen.get_scene_description(original_dict, change_uname=False)
+                description, original_dict = self.get_scene_description(original_dict, change_uname=False)
 
 
             else:
@@ -413,7 +426,7 @@ class MyRobot(Robot):
 
         if reset:
             original_dict = new_dict
-            description, original_dict = self.scene_gen.get_scene_description(original_dict)
+            description, original_dict = self.get_scene_description(original_dict)
 
         print(description)
 
@@ -427,75 +440,13 @@ class MyRobot(Robot):
         with the new pcds and new scene descriptors
         """
         new_dicts = self.get_object_dicts()
-        current_dict = self.system_env.object_dicts
+        current_dict = self.object_dicts
 
 
         description, final_dict = self.update_dict_util(current_dict, new_dicts)
-        self.system_env.object_dicts = final_dict
+        self.object_dicts = final_dict
         return description
 
-    def check_update_dicts(self):
-
-        input("press enter after setting the first scene")
-        first_dict = self.get_object_dicts()
-        first_desc, first_dict = self.scene_gen.get_scene_description(first_dict)        
-        
-        self.system_env.object_dicts = first_dict
-
-        print_object_dicts(first_dict)
-
-        print("first description:", first_desc)
-
-
-        obj_id_to_pick = int(input("enter object_id to pick"))
-        self.pick(obj_id_to_pick)
-
-        print("feedback queue", self.feedback_queue)
-
-
-        self.place(obj_id_to_pick, np.zeros(2))
-
-        print("feedback queue", self.feedback_queue)
-
-        second_dict= self.get_object_dicts()
-
-        print_object_dicts(second_dict)
-
-        final_desc, final_dict = self.update_dict_util(first_dict, second_dict)
-        print_object_dicts(final_dict)
-        
-        for obj_id in final_dict:
-            obj_pcd = final_dict[obj_id]["pcd"]
-            rgb = final_dict[obj_id]["rgb"]
-
-            print(obj_pcd.shape, rgb.shape)
-            name = f"final_{obj_id}"
-            util.meshcat_pcd_show(self.mc_vis, obj_pcd, color=None, name=f"scene/second_{name}_{obj_id}")
-
-
-        obj_id_to_pick = int(input("enter object_id to pick"))
-        self.pick(obj_id_to_pick)
-
-        print("feedback queue", self.feedback_queue)
-
-
-        self.place(obj_id_to_pick, np.zeros(2))
-        print("feedback queue", self.feedback_queue)
-
-        second_dict= self.get_object_dicts()
-
-        print_object_dicts(second_dict)
-
-        final_desc, final_dict = self.update_dict_util(first_dict, second_dict)
-        print_object_dicts(final_dict)
-        
-        for obj_id in final_dict:
-            obj_pcd = final_dict[obj_id]["pcd"]
-            rgb = final_dict[obj_id]["rgb"]
-
-            print(obj_pcd.shape, rgb.shape)
-            name = f"final_{obj_id}"
-            util.meshcat_pcd_show(self.mc_vis, obj_pcd, color=None, name=f"scene/third_{name}_{obj_id}")
 
     def visualize_object_dicts(self, object_dict):
         for obj_id in object_dict:
@@ -506,17 +457,16 @@ class MyRobot(Robot):
 
     def get_object_dicts(self):
         obs = self.get_obs()
-        combined_pcds = np.concatenate(obs["pcd"], axis=0)
 
         # //////////////////////////////////////////////////////////////////////////////
         # Labelling + segmentation + description
         # //////////////////////////////////////////////////////////////////////////////
 
         segs, info_dict = self.get_segment_labels_and_embeddings(
-            obs["colors"], obs["depths"], self.clip, vocabulary='custom', custom_vocabulary="mug,bowl,tray"
+            obs["colors"], obs["depths"], self.clip
         )
 
-        object_dicts = self.vision_mod.get_segmented_pcd(
+        object_dicts = self.get_segmented_pcd(
             obs["colors"],
             obs['depths'],
             segs,
@@ -524,7 +474,7 @@ class MyRobot(Robot):
             std_threshold=0.02,
             label_infos=info_dict,
             visualization=True,
-            process_pcd_fn=self.vision_mod.crop_pcd,
+            process_pcd_fn=self.crop_pcd,
         )
 
         return object_dicts
@@ -872,7 +822,13 @@ class MyRobot(Robot):
 
         self.pick_given_pose(grasp_pose)
         self.arm.go_home()
+
+
+        name = self.object_dicts[obj_id]["used_name"]
         self.object_dicts[obj_id]["pcd"] = "in_air"
+        print("Warning: the feedback is not actually checking the pick success. Make it conditioned")
+        self.feedback_queue.append(f"{name} was picked successfullly.")
+
 
 
     def pick_given_pose(self, pick_pose, translate=0.13):
@@ -1098,13 +1054,14 @@ class MyRobot(Robot):
         self.arm.move_ee_xyz([0, 0, 0.15])
         self.arm.go_home()
 
-        self.object_dicts[obj_id]["pcd"] = ("changed", position)
 
-        # current_position = self.arm.get_ee_pose()[0]
-        # self.arm.move_ee_xyz(preplace_position-current_position)
-        # # self.arm.set_ee_pose(pos=preplace_position)
-        # self.arm.eetool.close()
         print("place completed")
+        self.object_dicts[obj_id]["pcd"] = ("changed", position)
+        name = self.object_dicts[obj_id]["used_name"]
+        print("Warning: the feedback not linked to successful placement")
+        self.feedback_queue.append(f"Placing {name} was successful.")
+        self.update_dicts()
+
 
         # self.update_dicts()
 
@@ -1312,3 +1269,67 @@ learn_skill(skill_name)
         self.primitives_running_lst = list(self.primitives.keys())
 
         return self.primitives
+
+
+    # def check_update_dicts(self):
+
+    #     input("press enter after setting the first scene")
+    #     first_dict = self.get_object_dicts()
+    #     first_desc, first_dict = self.get_scene_description(first_dict)        
+        
+    #     self.object_dicts = first_dict
+
+    #     print_object_dicts(first_dict)
+
+    #     print("first description:", first_desc)
+
+
+    #     obj_id_to_pick = int(input("enter object_id to pick"))
+    #     self.pick(obj_id_to_pick)
+
+    #     print("feedback queue", self.feedback_queue)
+
+
+    #     self.place(obj_id_to_pick, np.zeros(2))
+
+    #     print("feedback queue", self.feedback_queue)
+
+    #     second_dict= self.get_object_dicts()
+
+    #     print_object_dicts(second_dict)
+
+    #     final_desc, final_dict = self.update_dict_util(first_dict, second_dict)
+    #     print_object_dicts(final_dict)
+        
+    #     for obj_id in final_dict:
+    #         obj_pcd = final_dict[obj_id]["pcd"]
+    #         rgb = final_dict[obj_id]["rgb"]
+
+    #         print(obj_pcd.shape, rgb.shape)
+    #         name = f"final_{obj_id}"
+    #         util.meshcat_pcd_show(self.mc_vis, obj_pcd, color=None, name=f"scene/second_{name}_{obj_id}")
+
+
+    #     obj_id_to_pick = int(input("enter object_id to pick"))
+    #     self.pick(obj_id_to_pick)
+
+    #     print("feedback queue", self.feedback_queue)
+
+
+    #     self.place(obj_id_to_pick, np.zeros(2))
+    #     print("feedback queue", self.feedback_queue)
+
+    #     second_dict= self.get_object_dicts()
+
+    #     print_object_dicts(second_dict)
+
+    #     final_desc, final_dict = self.update_dict_util(first_dict, second_dict)
+    #     print_object_dicts(final_dict)
+        
+    #     for obj_id in final_dict:
+    #         obj_pcd = final_dict[obj_id]["pcd"]
+    #         rgb = final_dict[obj_id]["rgb"]
+
+    #         print(obj_pcd.shape, rgb.shape)
+    #         name = f"final_{obj_id}"
+    #         util.meshcat_pcd_show(self.mc_vis, obj_pcd, color=None, name=f"scene/third_{name}_{obj_id}")

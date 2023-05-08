@@ -254,6 +254,8 @@ class RealRobot(MyRobot):
         super().__init__(gui, grasper=grasper, clip=clip, device=device)
         self.scene_dir = scene_dir
         self.table_bounds = np.array([[0.15, 1.0], [-0.5, 0.5], [-0.01, 1.0]])
+        self.vocabulary='custom'
+        self.custom_vocabulary="mug,bowl,tray"
 
         self.realsense_cams = None
         if realsense_cams:
@@ -365,11 +367,56 @@ class RealRobot(MyRobot):
 
         return segs, image_embeddings
 
+
+    def get_object_dicts(self):
+        obs = self.get_obs()
+
+        # //////////////////////////////////////////////////////////////////////////////
+        # Labelling + segmentation + description
+        # //////////////////////////////////////////////////////////////////////////////
+
+        segs, info_dict = self.get_segment_labels_and_embeddings(
+            obs["colors"], obs["depths"], self.clip, vocabulary=self.vocabulary, custom_vocabulary=self.custom_vocabulary
+        )
+
+        object_dicts = self.get_segmented_pcd(
+            obs["colors"],
+            obs['depths'],
+            segs,
+            remove_floor_ht=1.0,
+            std_threshold=0.02,
+            label_infos=info_dict,
+            visualization=True,
+            process_pcd_fn=self.vision_mod.crop_pcd,
+        )
+
+        return object_dicts
+
     def pick(self, obj_id):
         print(f"Picking object {obj_id}")
 
+        input("press enter wwhen object picked")
+
+        name = self.object_dicts[obj_id]["used_name"]
+        self.object_dicts[obj_id]["pcd"] = "in_air"
+        print("Warning: the feedback is not actually checking the pick success. Make it conditioned")
+        self.feedback_queue.append(f"{name} was picked successfullly.")
+
+
+
     def place(self, obj_id, position):
         print(f"Placing object {obj_id} at {position}")
+
+        input("Press enter when object placed at the new position")
+
+
+        print("place completed")
+        self.object_dicts[obj_id]["pcd"] = ("changed", position)
+        name = self.object_dicts[obj_id]["used_name"]
+        print("Warning: the feedback not linked to successful placement")
+        self.feedback_queue.append(f"Placing {name} was successful.")
+        self.update_dicts()
+
 
     def learn_skill(self, skill_name, skill_inputs):
         def random():
