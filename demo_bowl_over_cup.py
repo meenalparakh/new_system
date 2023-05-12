@@ -10,35 +10,18 @@ if __name__ == "__main__":
     robot.reset("bowl_over_cup")
     # robot.reset("one_object")
 
-    obs = robot.get_obs()
+    # //////////////////////////////////////////////////////////////////////////////
+    # Labelling + segmentation + description
+    # //////////////////////////////////////////////////////////////////////////////
 
-    combined_pts, combined_rgb = robot.get_combined_pcd(
-        obs["colors"], obs["depths"], idx=None
-    )
-    combined_pts, combined_rgb, _ = robot.crop_pcd(combined_pts, combined_rgb, None)
-    robot.viz.view_pcd(combined_pts, combined_rgb)
+    object_dicts = robot.get_object_dicts()
+    scene_description, object_dicts = robot.get_scene_description(object_dicts)
+    robot.init_dicts(object_dicts)
 
-    segs, info_dict = robot.get_segment_labels_and_embeddings(
-        obs["colors"], obs["depths"], robot.clip
-    )
-
-    object_dicts = robot.get_segmented_pcd(
-        obs["colors"],
-        obs["depths"],
-        segs,
-        remove_floor_ht=1.0,
-        std_threshold=0.025,
-        label_infos=info_dict,
-        visualization=True,
-        process_pcd_fn=robot.crop_pcd,
-    )
-
-    description, object_dicts = robot.get_scene_description(object_dicts)
-    robot.object_dicts = object_dicts
-    print_object_dicts(object_dicts)
+    robot.print_object_dicts(object_dicts)
 
     print("-----------------------------------------------------------------")
-    print(description)
+    print(scene_description)
     print("-----------------------------------------------------------------")
 
     # //////////////////////////////////////////////////////////////////////////////
@@ -76,14 +59,14 @@ if __name__ == "__main__":
     bowl_place_pos = robot.get_place_position(bowl_id, "farther from the cup")
 
     robot.place(bowl_id, bowl_place_pos)
-    robot.update_dicts()
+    # robot.update_dicts()
 
     robot.pick(cup_id, visualize=True)
     cup_place_pos = robot.get_place_position(cup_id, "over the bowl")
     robot.place(cup_id, cup_place_pos)
-    robot.update_dicts()
+    # robot.update_dicts()
 
-    input("wait")
+    input("should we continue to gpt planner?")
 
     # //////////////////////////////////////////////////////////////////////////////
     # LLM Planning and Execution in Loop

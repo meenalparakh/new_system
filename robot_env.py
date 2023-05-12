@@ -24,6 +24,10 @@ TODO:
 1. copy over update pick function, and planner and execute functions, 
     and test them for simulation
 2. create demos (may be possible now?)
+3. fix the place function
+4. fix the find function, also in primitives description
+5. copy the templates
+6. copy the API key
 '''
 
 OPP_RELATIONS = {"above": "below", "contained_in": "contains"}
@@ -191,7 +195,10 @@ class MyRobot(Robot):
         self.object_dicts = {}
         self.sim_dict = {"object_dicts": {}}
 
-        self.task = TASK_LST[task_name](self)
+        if isinstance(task_name, str):
+            self.task = TASK_LST[task_name](self)
+        else:
+            self.task = task_name(self) # assuming the class type has been passed
         self.task.reset()
         for _ in range(100):
             self.pb_client.stepSimulation()
@@ -452,14 +459,15 @@ class MyRobot(Robot):
         return description
 
 
-    def visualize_object_dicts(self, object_dict):
+    def visualize_object_dicts(self, object_dict, bg=False):
         for obj_id in object_dict:
             pcd = object_dict[obj_id]["pcd"]
             rgb = object_dict[obj_id]["rgb"]
             name = object_dict[obj_id]["label"][0]
             self.viz.view_pcd(pcd, rgb, name=f"{obj_id}_{name}")
 
-        self.view_pcd(self.bg_pcd, name=f"background")
+        if bg:
+            self.viz.view_pcd(self.bg_pcd, name=f"background")
 
     def get_object_dicts(self):
         obs = self.get_obs()

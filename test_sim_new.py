@@ -10,7 +10,7 @@ from plan_and_execute import plan_and_execute
 
 if __name__ == "__main__":
     robot = MyRobot(
-        gui=True, grasper=True, clip=True, meshcat_viz=False, magnetic_gripper=True
+        gui=True, grasper=True, clip=True, meshcat_viz=True, magnetic_gripper=True
     )
     robot.reset("bowl_over_cup")
 
