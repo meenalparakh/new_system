@@ -24,7 +24,7 @@ class VizServer:
             colors = pts
         # self.mc_vis["scene"].delete()
         self.mc_vis["scene/" + name].set_object(
-            g.PointCloud(pts.T, color=colors.T / 255.0)
+            g.PointCloud(pts.T, color=colors.T / 255.0, size=0.005)
         )
 
     def view_grasps(self, poses, name=None, freq=100):

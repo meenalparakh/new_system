@@ -1,8 +1,8 @@
 import open3d
 import os
 import numpy as np
-import pyrealsense2 as rs
-from realsense_utils.realsense import RealsenseLocal, enable_devices
+# import pyrealsense2 as rs
+# from realsense_utils.realsense import RealsenseLocal, enable_devices
 from realsense_utils.simple_multicam import MultiRealsenseLocal
 import copy
 
@@ -44,22 +44,22 @@ class RealSenseCameras:
             cam_names=cam_list, calib_filenames=calib_filenames
         )
 
-        ctx = rs.context()  # Create librealsense context for managing devices
+        # ctx = rs.context()  # Create librealsense context for managing devices
 
-        # Define some constants
-        resolution_width = 640  # pixels
-        resolution_height = 480  # pixels
-        frame_rate = 30  # fps
+        # # Define some constants
+        # resolution_width = 640  # pixels
+        # resolution_height = 480  # pixels
+        # frame_rate = 30  # fps
 
-        # pipelines = enable_devices(serials, ctx, resolution_width, resolution_height, frame_rate)
-        self.pipelines = enable_devices(
-            np.array(serials)[cam_index],
-            ctx,
-            resolution_width,
-            resolution_height,
-            frame_rate,
-        )
-        self.cam_interface = RealsenseLocal()
+        # # pipelines = enable_devices(serials, ctx, resolution_width, resolution_height, frame_rate)
+        # self.pipelines = enable_devices(
+        #     np.array(serials)[cam_index],
+        #     ctx,
+        #     resolution_width,
+        #     resolution_height,
+        #     frame_rate,
+        # )
+        # self.cam_interface = RealsenseLocal()
 
     def get_rgb_depth(self):
         rgb_imgs = []

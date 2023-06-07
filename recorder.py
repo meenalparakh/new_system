@@ -5,6 +5,9 @@ import os
 import pickle
 import shutil
 from datetime import datetime
+from IPython import embed
+import cv2
+# from llm_robot.utils import path_util
 
 class Recorder:
 
@@ -17,7 +20,7 @@ class Recorder:
         then each function in the robot will use the recorder to 
         '''
 
-        self.EXPERIMENTS_DIR = "../"
+        self.EXPERIMENTS_DIR = "/Users/meenalp/Desktop/MEng/system_repos/llmrobot/experiment_results"
         # self.PLAN_RESULTS = "plan_results"
 
         os.makedirs(self.EXPERIMENTS_DIR, exist_ok=True)
@@ -25,8 +28,8 @@ class Recorder:
 
         self.experiment_dir = os.path.join(self.EXPERIMENTS_DIR, experiment_name)
         if os.path.exists(self.experiment_dir):
-            response = input("the experiment dir already exists. To delete press 'y', and press 'n' to conitnue replay:")
-            if response == "y":
+            response = input("the experiment dir already exists. To delete press 'yesyes', and press 'n' to conitnue replay:")
+            if response == "yesyes":
                 shutil.rmtree(self.experiment_dir)
                 os.makedirs(self.experiment_dir)
 
@@ -43,54 +46,6 @@ class Recorder:
     #     os.makedirs(dir)
 
     #     for im in images:
-
-    def show_images(self):
-        observations = glob(self.experiment_dir + "/info*.pkl")
-        timestamps = sorted([obs.split(os.sep)[-1][5:-4] for obs in observations])
-        print(timestamps)
-        
-        from matplotlib import pyplot as plt
-        from robot_env import MyRobot
-        idx = 0
-        
-
-        robot = MyRobot(meshcat_viz=True)
-        os.makedirs(os.path.join(self.experiment_dir, "images"), exist_ok=True)
-        for t in timestamps:
-            with open(self.get_location(f"info_{t}.pkl"), 'rb') as f:
-                info_dict = pickle.load(f)
-
-            object_dict = info_dict["object_dicts"]
-            segs = info_dict["segs"]
-            obs = info_dict["obs"]
-            robot.visualize_object_dicts(object_dict, bg=False)
-            input("press enter to continue")
-
-            colors = obs["colors"]
-            depths = obs["depths"]
-            for c, d in zip(colors, depths):
-                plt.imsave(os.path.join(self.experiment_dir, f"images/{idx}_color.png"), c)
-                input("press enter")
-                d[d > 100] = 5
-                plt.imsave(os.path.join(self.experiment_dir, f"images/{idx}_depth.png"), d)
-                input("press enter to get next pair of image")
-                idx += 1
-
-
-    def show_conversation(self):
-        plans = glob(self.get_location(f"conversation_*.pkl"))
-        if len(plans) == 1:
-            with open(plans[0], 'rb') as f:
-                conversation = pickle.load(f)
-            for dialogue in conversation:
-                role = dialogue["role"]
-                if role == "system":
-                    print(Fore.BLUE + "System: " + dialogue["content"])
-                elif role == "user":
-                    print(Fore.RED + "User: " + dialogue["content"])
-                elif role == "assistant":
-                    print(Fore.GREEN + "AI: " + dialogue["content"])
-            print(Fore.BLACK) 
 
 
     def record_obs(self, obs, segs, object_dicts, bg_pcd, detection=True, sam=True):
@@ -153,7 +108,8 @@ class Recorder:
     def record_conversation(self, message_lst):
         timestamp = datetime.now().strftime("%Y%m%d_%H%M")
 
-        with open(os.path.join(self.experiment_dir, f"conversation_{timestamp}.pkl"), 'wb') as f:
+        with open(os.path.join(self.experiment_dir, f"conversation.pkl"), 'wb') as f:
+        # with open(os.path.join(self.experiment_dir, f"conversation_{timestamp}.pkl"), 'wb') as f:
             pickle.dump(message_lst, f)
 
         print("Conversation recorded!")
@@ -162,91 +118,130 @@ class Recorder:
     def get_location(self, fname):
         return os.path.join(self.experiment_dir, fname)
 
-    def replay_recording(self, robot):
+    # def record_plan(self, robot):
+
+    def get_conversation(self):
+        plans = glob(self.get_location(f"conversation.pkl"))
+        if len(plans) == 1:
+            with open(plans[0], 'rb') as f:
+                conversation = pickle.load(f)
+            return conversation
+        return []
+
+    # def restore_final(self, robot):
+
+
+    def replay_recording(self, robot, with_actions=True):
         
         observations = glob(self.experiment_dir + "/info*.pkl")
+
+        if len(observations) == 0:
+            return False
+
         timestamps = sorted([obs.split(os.sep)[-1][5:-4] for obs in observations])
-        print(timestamps)
+        print("Following timestamps found:", timestamps)
 
         for t in timestamps:
+            self.timestamp = t
             with open(self.get_location(f"info_{t}.pkl"), 'rb') as f:
                 info_dict = pickle.load(f)
 
             object_dict = info_dict["object_dicts"]
             segs = info_dict["segs"]
             obs = info_dict["obs"]
+            
+            for idx, c in enumerate(obs["colors"]):
 
-            with open(self.get_location(f"description_{t}.txt")) as f:
-                text_description = f.read()
+                cv2.imwrite(os.path.join(self.experiment_dir, 
+                                         f"image_{idx}.png"), 
+                            c[:,:,::-1])
+
+
+            try:
+                with open(self.get_location(f"description_{t}.txt")) as f:
+                    text_description = f.read()
+            except FileNotFoundError:
+                print("no description file exists")
+                text_description = None
 
             robot.print_object_dicts(object_dict)
             print(text_description)
 
-            robot.system_env.object_dicts = object_dict
+            robot.object_dicts = object_dict
+            robot.scene_description = text_description
 
             bg_pcd = info_dict["bg_pcd"]
-            robot.vision_mod.bg_pcd = bg_pcd
+            robot.bg_pcd = bg_pcd
 
-            combined_pcds = np.concatenate(obs["pcd"], axis=0)
-            robot.viz.view_pcd(combined_pcds.reshape((-1, 3)), name=f'combined')
+            # combined_pcds = np.concatenate(obs["pcd"], axis=0)
+            # combined_pcd, combined_rgb = robot.get_combined_pcd(obs["colors"], obs["depths"])
+            # robot.viz.view_pcd(combined_pcd, combined_rgb, name=f'combined')
 
+            # print(object_dict.keys())
             robot.visualize_object_dicts(object_dict)
+            # embed()
 
         
             any_grasps = glob(self.get_location(f"grasp_*_{t}.pkl"))
             print("grasps", any_grasps)
-            # from IPython import embed
-            # embed()
-            assert len(any_grasps) <= 1, "more than one grasps found at one timestamp"
 
-            if len(any_grasps) == 1:
-                with open(any_grasps[0], 'rb') as f:
+            # assert len(any_grasps) <= 1, "more than one grasps found at one timestamp"
+
+            # if len(any_grasps) == 1:
+            for idx in range(len(any_grasps)):
+                with open(any_grasps[idx], 'rb') as f:
                     obj_id, grasp_world, grasp_relative = pickle.load(f)
 
-                name = robot.system_env.object_dicts[obj_id]["used_name"]
+                name = robot.object_dicts[obj_id].get("used_name", "unknown")
 
 
                 grasp_pose = grasp_world
                 robot.picked_pose = grasp_relative
 
+                robot.viz.view_grasps(grasp_pose)
                 # return grasp_pose
-                pcd = robot.system_env.object_dicts[obj_id]["pcd"]
-                color = robot.system_env.object_dicts[obj_id]["rgb"]
+                pcd = robot.object_dicts[obj_id]["pcd"]
+                color = robot.object_dicts[obj_id]["rgb"]
                 robot.viz.view_pcd(pcd, color, "test_bowl")
 
-                # pick_pose_mat = robot.pick_given_pose(grasp_pose)
+                if with_actions:
+                    pick_pose_mat = robot.pick_given_pose(grasp_pose)
 
-                robot.system_env.object_dicts[obj_id]["pcd"] = ("in_air", grasp_pose[:3, :3])
-                print("Warning: the feedback is not actually checking the pick success. Make it conditioned")
+                robot.object_dicts[obj_id]["pcd"] = ("in_air", grasp_pose[:3, :3])
+                # print("Warning: the feedback is not actually checking the pick success. Make it conditioned")
                 robot.feedback_queue.append(f"{name} was picked successfullly.")
 
 
-            any_places = glob(self.get_location(f"place_*_{t}.pkl"))
-            assert len(any_places) <= 1, "more than one places found at one timestamp"
 
-            if len(any_places) == 1:
-                with open(any_places[0], 'rb') as f:
+            any_places = glob(self.get_location(f"place_*_{t}.pkl"))
+            # assert len(any_places) <= 1, "more than one places found at one timestamp"
+
+            # if len(any_places) == 1:
+            for idx in range(len(any_places)):
+                with open(any_places[idx], 'rb') as f:
                     obj_id, position = pickle.load(f)
 
                     place_pose_obj = np.eye(4)
                     place_pose_obj[:3, 3] = position
                     place_pose = place_pose_obj @ robot.picked_pose
 
-                    # robot.robot.planning.go_home_plan()
-                    # robot.place_given_pose(place_pose)
+                    if with_actions:
+                        robot.robot.planning.go_home_plan()
+                        robot.place_given_pose(place_pose)
 
                     # input(f"Place enter when placed at location {position}")
                     print("place completed")
 
-                    # robot.system_env.object_dicts[obj_id]["pcd"] = ("changed", position)
-                    name = robot.system_env.object_dicts[obj_id]["used_name"]
+                    # robot.object_dicts[obj_id]["pcd"] = ("changed", position)
+                    name = robot.object_dicts[obj_id].get("used_name", "unknown")
                     print("Warning: the feedback not linked to successful placement")
                     robot.feedback_queue.append(f"Placing {name} was successful.")
 
+            input("press enter to go to next time step")
+            # robot.viz.mc_vis.delete()
 
 
-
-        plans = glob(self.get_location(f"conversation_*.pkl"))
+        plans = glob(self.get_location(f"conversation.pkl"))
         if len(plans) == 1:
             with open(plans[0], 'rb') as f:
                 conversation = pickle.load(f)
@@ -267,30 +262,28 @@ class Recorder:
             print(Fore.BLACK)
 
         print("replay finished!")            
-        return robot
-    
-    def show_images_and_scene_description(self):
-        
-        observations = glob(self.experiment_dir + "/info*.pkl")
-        timestamps = sorted([obs.split(os.sep)[-1][5:-4] for obs in observations])
-        print(timestamps)
+        return True
 
-        idx = 0
-        from matplotlib import pyplot as plt
-        for t in timestamps:
-            with open(self.get_location(f"info_{t}.pkl"), 'rb') as f:
-                info_dict = pickle.load(f)
+    def print_conversation(self):
+        plans = glob(self.get_location(f"conversation.pkl"))
+        if len(plans) == 1:
+            with open(plans[0], 'rb') as f:
+                conversation = pickle.load(f)
 
-            # object_dict = info_dict["object_dicts"]
-            # segs = info_dict["segs"]
-            obs = info_dict["obs"]
-            
+            for dialogue in conversation:
+                role = dialogue["role"]
 
-            with open(self.get_location(f"description_{t}.txt")) as f:
-                text_description = f.read()
+                if role == "system":
+                    print(Fore.BLUE + "System: " + dialogue["content"])
 
-            print(text_description)
+                elif role == "user":
+                    print(Fore.RED + "User: " + dialogue["content"])
 
+                elif role == "assistant":
+                    print(Fore.GREEN + "AI: " + dialogue["content"])
+
+
+            print(Fore.BLACK)
         
 
 
@@ -300,7 +293,30 @@ class Recorder:
 
 
     def get_obs(self):
-        pass 
+        observations = glob(self.experiment_dir + "/info*.pkl")
+
+        if len(observations) == 0:
+            return False
+
+        timestamps = sorted([obs.split(os.sep)[-1][5:-4] for obs in observations])
+        print("Following timestamps found:", timestamps)
+
+        for t in timestamps[:1]:
+            self.timestamp = t
+            with open(self.get_location(f"info_{t}.pkl"), 'rb') as f:
+                info_dict = pickle.load(f)
+
+            object_dict = info_dict["object_dicts"]
+            segs = info_dict["segs"]
+            obs = info_dict["obs"]
+            
+            for idx, c in enumerate(obs["colors"]):
+
+                cv2.imwrite(os.path.join(self.experiment_dir, 
+                                         f"image_{idx}.png"), 
+                            c[:,:,::-1])
+                
+            return obs, object_dict
 
     def get_segments_and_labels(self):
         pass
@@ -312,11 +328,15 @@ class Recorder:
         pass
 
 
+    # def replay_plan(saved_dir):
+    #     pass
 
 
 
 
-if __name__ == "__main__":
 
-    recorder = Recorder("plan_spoon_over_mug")
-    recorder.show_conversation()
+# how to record the perception
+# the observation - the images, depths, pointclouds 
+# the detection results, the segmentation results from sam
+# the segmented point cloud for each object
+# the generated scene description and updated object dicts

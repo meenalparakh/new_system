@@ -5,7 +5,7 @@ import airobot as ar
 import numpy as np
 import time
 import airobot.utils.common as ut
-
+from scipy.spatial.transform import R
 
 def pos_offset_along_approach_vec(approach_vec, offset_dis):
     """
@@ -76,6 +76,20 @@ def control_robot(
             pose[2],
         )
 
+
+        cur_euler = robot.arm.get_ee_pose()[3]
+        pose1_euler = R.from_matrix(pose[1]).as_euler('xyz')
+
+        yaw_mat = R.from_euler('xyz', [0, 0, np.pi]).as_matrix()
+        new_rotation = np.matmul(pose[1], yaw_mat)
+        pose2_euler = R.from_matrix(new_rotation).as_euler('xyz')
+
+        diff = [np.sum(np.abs(pose1_euler - cur_euler)), 
+                np.sum(np.abs(pose2_euler - cur_euler))]
+        
+        pose[1] = pose[1] if diff[1] < diff[2] else new_rotation
+
+
         dispatch_control_order(robot_category + ":open")
         if control_mode == "direct":
             dispatch_control_order(
@@ -96,47 +110,8 @@ def control_robot(
         dispatch_control_order(robot_category + ":close")
         dispatch_control_order(robot_category + ":move_xyz", pos=[0, 0, move_up])
 
-    elif action == "place":
-        position = pose[0]
+        pose_mat = np.eye(4)
+        pose_mat[:3, 3] = actual_target_pos
+        pose_mat[:3, :3] = pose[1]
 
-        current_position = dispatch_control_order(robot_category + ":get_pose")[0]
-        direction = np.array(position) - current_position
-        direction[2] = 0
-        dispatch_control_order(robot_category + ":move_xyz", direction)
-        input()
-
-        preplace_position = dispatch_control_order(robot_category + ":get_pose")[0]
-        success = True
-        while success:
-            success = dispatch_control_order(
-                robot_category + ":move_xyz", [0, 0, -0.01]
-            )
-
-        dispatch_control_order(robot_category + ":open")
-        temp_posi = pos_offset_along_approach_vec(pose[2], -0.15)
-        dispatch_control_order(robot_category + ":move_xyz", temp_posi)
-        dispatch_control_order(robot_category + ":move_xyz", [0, 0, move_up])
-        dispatch_control_order(robot_category + ":close")
-
-        # current_position = self.arm.get_ee_pose()[0]
-        # self.arm.move_ee_xyz(preplace_position-current_position)
-        # # self.arm.set_ee_pose(pos=preplace_position)
-        # self.arm.eetool.close()
-        # print("place completed")
-
-        # actual_target_pos = pose[0] + pos_offset_along_approach_vec(pose[2], linear_offset)
-        # print('target grasp pose: pos|quat|approach vector', actual_target_pos, pose[1], pose[2])
-
-        # dispatch_control_order(robot_category + ':open')
-        # if control_mode == 'direct':
-        #     dispatch_control_order(robot_category + ':set_pose', actual_target_pos, pose[1])
-        # elif control_mode == 'linear':
-        #     temp_posi = pose[0] + pos_offset_along_approach_vec(pose[2], -0.25)
-        #     dispatch_control_order(robot_category + ':set_pose', temp_posi, pose[1])
-        #     cur_pos, cur_quat, _, cur_euler = dispatch_control_order(robot_category + ':get_pose')
-        #     delta_pos = np.array(actual_target_pos) - np.array(cur_pos)
-        #     dispatch_control_order(robot_category + ':move_xyz', delta_pos)
-        # cur_pos, cur_quat, _, cur_euler = dispatch_control_order(robot_category + ':get_pose')
-        # print('current (pos|quat|euler): ', cur_pos, cur_quat, cur_euler)
-        # dispatch_control_order(robot_category + ':close')
-        # dispatch_control_order(robot_category + ':move_xyz', pos=[0, 0, move_up])
+        return pose_mat

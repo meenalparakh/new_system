@@ -9,7 +9,13 @@ import open3d
 import numpy as np
 import distinctipy as dp
 from heuristics import get_relation
-from scene_description_utils import construct_graph, graph_traversal, text_description, get_place_description
+from scene_description_utils import (
+    construct_graph,
+    graph_traversal,
+    text_description,
+    get_place_description,
+    get_direction_label,
+)
 from grasping.eval import initialize_net, cgn_infer
 from magnetic_gripper import MagneticGripper
 from scipy.spatial.transform import Rotation as R
@@ -18,8 +24,10 @@ from visualize_pcd import VizServer
 import cv2
 import random
 from skill_learner import ask_for_skill
+from matplotlib import pyplot as plt
 
-'''
+
+"""
 TODO:
 1. copy over update pick function, and planner and execute functions, 
     and test them for simulation
@@ -28,23 +36,51 @@ TODO:
 4. fix the find function, also in primitives description
 5. copy the templates
 6. copy the API key
-'''
+"""
 
 OPP_RELATIONS = {"above": "below", "contained_in": "contains"}
 
 np.random.seed(0)
 
-def pix_to_xyz(pixel, height, bounds, pixel_size, skip_height=False):
-  """Convert from pixel location on heightmap to 3D position."""
-  u, v = pixel
-  x = bounds[0, 0] + v * pixel_size
-  y = bounds[1, 0] + u * pixel_size
-  if not skip_height:
-    z = bounds[2, 0] + height[u, v]
-  else:
-    z = 0.0
-  return (x, y, z)
 
+def pix_to_xyz(pixel, height, bounds, pixel_size, skip_height=False):
+    """Convert from pixel location on heightmap to 3D position."""
+    u, v = pixel
+    x = bounds[0, 0] + v * pixel_size
+    y = bounds[1, 0] + u * pixel_size
+    if not skip_height:
+        z = bounds[2, 0] + height[u, v]
+    else:
+        z = 0.0
+    return [x, y, z]
+
+
+def xyz_to_pix(xyz, bounds, pixel_size):
+    """Convert from pixel location on heightmap to 3D position."""
+    # u, v = pixel
+    # x = bounds[0, 0] + v * pixel_size
+    # y = bounds[1, 0] + u * pixel_size
+
+    x, y, z = xyz
+    v = int((x - bounds[0, 0]) / pixel_size)
+    u = int((y - bounds[1, 0]) / pixel_size)
+
+    return u, v
+
+
+def draw_gaussian(mat, pix):
+    highest = 10
+    dim = 15
+    half = dim // 2
+    sigma = 4
+
+    x, y = np.meshgrid(range(dim), range(dim))
+    distance = (np.square(x - half) + np.square(y - half)) / sigma**2
+    distance = highest * np.exp(-distance)
+    v, u = pix
+    mat[u - half : u + half + 1, v - half : v + half + 1] = distance
+
+    return mat
 
 
 def clean_object_pcds(object_dicts):
@@ -105,7 +141,7 @@ class MyRobot(Robot):
         grasper=False,
         magnetic_gripper=False,
         clip=False,
-        meshcat_viz=False,
+        meshcat_viz=True,
         device=None,
         skill_learner=False,
     ):
@@ -116,6 +152,7 @@ class MyRobot(Robot):
             # use_eetool=False,
             # use_base=False,
         )
+        self.table_bounds = np.array([[0.2, 1.0], [-0.4, 0.4], [-0.01, 0.5]])
 
         if grasper:
             self.grasper, _, self.grasper_config = initialize_net(
@@ -155,20 +192,19 @@ class MyRobot(Robot):
     def end_task(self):
         self.new_task = True
 
-
     def get_feedback(self):
         # feedback = " ".join(self.feedback_queue)
         feedback = self.feedback_queue[-1]
         return feedback
-    
+
         # new_scene_description = self.get_scene_description()
         # return feedback + " " + new_scene_description
-    
+
     def empty_feedback_queue(self):
         self.feedback_queue = []
 
+    def reset(self, task_name, *args):
 
-    def reset(self, task_name):
         success = self.arm.go_home()
         if not success:
             log_warn("Robot go_home failed!!!")
@@ -196,12 +232,14 @@ class MyRobot(Robot):
         self.sim_dict = {"object_dicts": {}}
 
         if isinstance(task_name, str):
-            self.task = TASK_LST[task_name](self)
+            self.task = TASK_LST[task_name](self, *args)
         else:
-            self.task = task_name(self) # assuming the class type has been passed
+            self.task = task_name(self, *args)  # assuming the class type has been passed
+        
         self.task.reset()
-        for _ in range(100):
-            self.pb_client.stepSimulation()
+
+        # for _ in range(100):
+        #     self.pb_client.stepSimulation()
 
         self.airobot_arm_fns = {
             "ur5e:open": lambda: self.arm.eetool.open,
@@ -385,19 +423,16 @@ class MyRobot(Robot):
         run object detection, and segmentation and remaps the object ids
         with the new pcds and new scene descriptors
         """
-        
 
         reset = False
         new_obj_lst = list(new_dict.keys())
         cur_obj_lst = list(original_dict.keys())
 
-
-        if len(new_obj_lst) != len(cur_obj_lst): 
+        if len(new_obj_lst) != len(cur_obj_lst):
             print("number of objects in the scene are different, resetting the dict")
             reset = True
 
         else:
-
             new_obj_centers = [new_dict[oid]["pcd"].mean(axis=0) for oid in new_obj_lst]
             new_obj_centers = np.array(new_obj_centers)
 
@@ -417,7 +452,7 @@ class MyRobot(Robot):
                 except:
                     # continue
                     not_matched.append(oid)
-            
+
             if len(matched_new) == len(np.unique(matched_new)):
                 print("unique matching found")
                 k = list(set(new_obj_lst).difference(set(matched_new)))
@@ -426,7 +461,6 @@ class MyRobot(Robot):
                     original_dict[cid]["pcd"] = new_dict[nid]["pcd"]
 
                 # description, original_dict = self.get_scene_description(original_dict, change_uname=False)
-
 
             else:
                 print("Objects could not be uniquely matched. Resetting the dict")
@@ -442,7 +476,6 @@ class MyRobot(Robot):
 
         # return description, original_dict
 
-
     def update_dicts(self):
         """
         generate a new object dict and do the matching with the old objects
@@ -453,17 +486,18 @@ class MyRobot(Robot):
         new_dicts = self.get_object_dicts()
         current_dict = self.object_dicts
 
-
         description, final_dict = self.update_dict_util(current_dict, new_dicts)
         self.object_dicts = final_dict
         return description
 
-
     def visualize_object_dicts(self, object_dict, bg=False):
+        print("Visualizing object_dicts:")
+        # self.viz.mc_vis["scene"].delete()
         for obj_id in object_dict:
             pcd = object_dict[obj_id]["pcd"]
             rgb = object_dict[obj_id]["rgb"]
             name = object_dict[obj_id]["label"][0]
+            print(f"\t{name}: pcd length: {len(pcd)}")
             self.viz.view_pcd(pcd, rgb, name=f"{obj_id}_{name}")
 
         if bg:
@@ -482,7 +516,7 @@ class MyRobot(Robot):
 
         object_dicts = self.get_segmented_pcd(
             obs["colors"],
-            obs['depths'],
+            obs["depths"],
             segs,
             remove_floor_ht=1.0,
             std_threshold=0.02,
@@ -496,15 +530,15 @@ class MyRobot(Robot):
     def init_dicts(self, object_dicts):
         self.object_dicts = object_dicts
 
-
-    def print_object_dicts(self, object_dict, ks=["label", "relation", "desc", "used_name"]):
+    def print_object_dicts(
+        self, object_dict, ks=["label", "relation", "desc", "used_name"]
+    ):
         for id, info in object_dict.items():
             print("Object id", id)
             for k, v in info.items():
                 if k in ks:
                     print(f"    {k}: {v}")
             print()
-
 
     def get_segment_labels_and_embeddings(self, colors, depths, clip_):
         # for each rgb image, returns a segmented image, and
@@ -568,7 +602,7 @@ class MyRobot(Robot):
         depths,
         segs,
         remove_floor_ht=0.90,
-        std_threshold=0.01,
+        std_threshold=0.03,
         label_infos=None,
         visualization=False,
         process_pcd_fn=None,
@@ -640,10 +674,11 @@ class MyRobot(Robot):
         objects = {}
 
         start_idx = 0
+        print("\nProcessing Image index: 0")
         for j in range(len(pcd_pts)):
             seg = pcd_seg[j][:, 0]
             unique_ids = np.unique(seg.astype(int))
-            print("unique_ids in first image", unique_ids)
+            # print("unique_ids in first image", unique_ids)
 
             unique_ids = unique_ids[unique_ids >= 0]
 
@@ -662,40 +697,59 @@ class MyRobot(Robot):
                     }
 
                 new_uids_count = np.max(unique_ids) + 1
+                print(
+                    "\tThis image contained the following categories and have been initialized:",
+                    [i["label"][0] for _, i in objects.items()],
+                )
+
                 break
 
-        print("labels added: ", [i["label"] for _, i in objects.items()])
+        print(
+            "\tIn processing the next images, any particular category will either\n"
+            f"\tbe updated if the inverse_similarity score is less than {std_threshold}, or will be\n"
+            "\tadded as a new category if inverser_similarity score is greater than threshold"
+        )
 
         for idx in range(start_idx + 1, len(pcd_pts)):
             seg = pcd_seg[idx][:, 0]
             unique_ids = np.array(np.unique(seg.astype(int)))
-            print("unique_ids in image", idx, unique_ids)
-
-            unique_ids = unique_ids[unique_ids >= 0]
             # print("unique_ids in image", idx, unique_ids)
 
+            unique_ids = unique_ids[unique_ids >= 0]
+
+            # print("unique_ids in image", idx, unique_ids)
+            obj_lst = list(objects.keys())
             new_dict = {}
+            print(
+                f"\nProcessing image index: {idx}. The image contains the categories:",
+                [label_infos[idx][i]["label"] for i in unique_ids],
+            )
+            print("\tCurrent Objects", [objects[obj]["label"][0] for obj in obj_lst])
             for uid in unique_ids:
                 l = label_infos[idx][uid]["label"]
 
-                print(uid, l)
+                # print(uid, l)
                 valid = seg == uid
                 new_pcd = pcd_pts[idx][valid]
                 new_rgb = pcd_rgb[idx][valid]
 
                 diffs = []
-                obj_lst = list(objects.keys())
                 for obj in obj_lst:
                     original_pcd = objects[obj]["pcd"]
                     d = combined_variance(new_pcd, original_pcd)
                     diffs.append(d)
 
-                print(diffs)
+                print(
+                    f"\t\t{l}'s inverse similarity score with current objects:", diffs
+                )
+
+                # print(diffs)
 
                 min_diff = np.min(diffs)
                 if min_diff < std_threshold:
-                    print("min_diff less than 2 cm, updating pcd with label:", l)
-
+                    print(
+                        "\t\t\tMatch with current object found! Updating the current pcd."
+                    )
                     l = label_infos[idx][uid]["label"]
                     obj_id = obj_lst[np.argmin(diffs)]
                     p = objects[obj_id]["pcd"]
@@ -708,7 +762,9 @@ class MyRobot(Robot):
                     objects[obj_id]["embed"].append(label_infos[idx][uid]["embedding"])
 
                 else:
-                    print("min diff more than 2, adding as new pcd:", l)
+                    print(
+                        "\t\t\tNo match with current objects! Initializing a new category."
+                    )
                     new_dict[new_uids_count] = {
                         "pcd": new_pcd,
                         "rgb": new_rgb,
@@ -716,7 +772,7 @@ class MyRobot(Robot):
                         "embed": [label_infos[idx][uid]["embedding"]],
                     }
                     new_uids_count += 1
-                    objects.update(new_dict)
+            objects.update(new_dict)
 
         extra_pcd = []
         for idx in range(len(pcd_pts)):
@@ -732,9 +788,10 @@ class MyRobot(Robot):
         return objects
 
     def get_current_scene_description(self):
-        description, _ = self.get_scene_description(self.object_dicts, 
-                                                    change_uname=False)
-        
+        description, _ = self.get_scene_description(
+            self.object_dicts, change_uname=False
+        )
+
         self.feedback_queue.append(description)
         return description
 
@@ -771,8 +828,9 @@ class MyRobot(Robot):
         object_dicts, new_obj_lst = construct_graph(object_dicts)
         side = "right"
         traversal_order, path = graph_traversal(object_dicts, new_obj_lst, side=side)
-        description = text_description(object_dicts, traversal_order, path, side=side, 
-                                       change_uname=change_uname)
+        description = text_description(
+            object_dicts, traversal_order, path, side=side, change_uname=change_uname
+        )
 
         return description, object_dicts
 
@@ -828,9 +886,9 @@ class MyRobot(Robot):
 
         return pred_grasps, pred_success
 
-
     def pick(self, obj_id, visualize=False):
         # self.obs_lst.append(self.get_obs())
+        self.arm.go_home()
 
         pred_grasps, pred_success = self.get_grasp(
             obj_id, threshold=0.8, add_floor=self.bg_pcd, visualize=visualize
@@ -848,19 +906,25 @@ class MyRobot(Robot):
             return
 
         # grasp_idx = random.choice(range(len(grasps)))
+        pcd = self.object_dicts[obj_id]["pcd"]
+        color = self.object_dicts[obj_id]["rgb"]
         grasp_idx = np.argmax(pred_success)
         grasp_pose = pred_grasps[grasp_idx]
 
-        self.pick_given_pose(grasp_pose)
+        pick_pose_mat = self.pick_given_pose(grasp_pose)
         self.arm.go_home()
-
 
         name = self.object_dicts[obj_id]["used_name"]
         self.object_dicts[obj_id]["pcd"] = "in_air"
-        print("Warning: the feedback is not actually checking the pick success. Make it conditioned")
+        print(
+            "Warning: the feedback is not actually checking the pick success. Make it conditioned"
+        )
+
+        object_pose = np.eye(4)
+        object_pose[:3, 3] = np.mean(pcd, axis=0)
+        self.picked_pose = np.linalg.inv(object_pose) @ pick_pose_mat
+        
         self.feedback_queue.append(f"{name} was picked successfullly.")
-
-
 
     def pick_given_pose(self, pick_pose, translate=0.13):
         self.gripper.release()
@@ -874,9 +938,9 @@ class MyRobot(Robot):
         direction_vector = gripper_pose[:3, 2]
         pick_position = gripper_pose[:3, 3]
         # pick_position[2] = pick_position[2] - 0.10
-        pose = (pick_position, rotation, direction_vector)
+        pose = [pick_position, rotation, direction_vector]
 
-        control_robot(
+        pose_mat = control_robot(
             self,
             pose,
             robot_category="franka",
@@ -894,7 +958,7 @@ class MyRobot(Robot):
         # self.obs_lst.append(self.get_obs())
 
         print("Pick completed")
-
+        return pose_mat
 
     def move_arm(self, pos1, pos2=None):
         # move to pos1
@@ -913,8 +977,9 @@ class MyRobot(Robot):
         # move to pos1
         self.arm.rot_ee_xyz(angle, "x")
 
-    def get_segmap(self, object_dicts=None, to_ignore=[], bounds=None, pixel_size=0.003125):
-
+    def get_segmap(
+        self, object_dicts=None, to_ignore=[], bounds=None, pixel_size=0.003125
+    ):
         if object_dicts is None:
             object_dicts = self.object_dicts
 
@@ -928,7 +993,7 @@ class MyRobot(Robot):
 
             if oid in to_ignore:
                 continue
-            p = (object_dicts[oid]["pcd"])
+            p = object_dicts[oid]["pcd"]
             m = np.ones(len(p)) * oid
 
             pcds.append(p)
@@ -945,21 +1010,17 @@ class MyRobot(Robot):
         segmap = np.zeros((height, width), dtype=int)
 
         # Filter out 3D points that are outside of the predefined bounds.
-        ix = (pcds[Ellipsis, 0] >= bounds[0, 0]) & (
-            pcds[Ellipsis, 0] < bounds[0, 1]
-        )
-        iy = (pcds[Ellipsis, 1] >= bounds[1, 0]) & (
-            pcds[Ellipsis, 1] < bounds[1, 1]
-        )
-        iz = (pcds[Ellipsis, 2] >= bounds[2, 0]) & (
-            pcds[Ellipsis, 2] < bounds[2, 1]
-        )
-        
+        ix = (pcds[Ellipsis, 0] >= bounds[0, 0]) & (pcds[Ellipsis, 0] < bounds[0, 1])
+        iy = (pcds[Ellipsis, 1] >= bounds[1, 0]) & (pcds[Ellipsis, 1] < bounds[1, 1])
+        iz = (pcds[Ellipsis, 2] >= bounds[2, 0]) & (pcds[Ellipsis, 2] < bounds[2, 1])
+
         valid = ix & iy & iz
 
-        # checking that all the pcds lie inside table bounds 
-        if np.sum(1-valid) != 0:
-            print("Warning: not all pcd boints lie inside table bounds!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!")
+        # checking that all the pcds lie inside table bounds
+        if np.sum(1 - valid) != 0:
+            print(
+                "Warning: not all pcd boints lie inside table bounds!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!"
+            )
 
         pcds = pcds[valid]
         segs = segs[valid]
@@ -979,9 +1040,200 @@ class MyRobot(Robot):
         segmap = segmap.T
 
         return heightmap, segmap
-    
-    def get_place_position(self, obj_id, place_description):
 
+    def get_segmap(
+        self, object_dicts=None, to_ignore=[], bounds=None, pixel_size=0.003125
+    ):
+        if object_dicts is None:
+            object_dicts = self.object_dicts
+
+        if bounds is None:
+            bounds = self.table_bounds
+
+        pcds, segs = [], []
+        colors = []
+
+        for oid in object_dicts:
+            assert oid > 0, "error: the object ids start with zero?"
+
+            if oid in to_ignore:
+                continue
+            p = object_dicts[oid]["pcd"]
+            m = np.ones(len(p)) * oid
+
+            pcds.append(p)
+            segs.append(m)
+            colors.append(object_dicts[oid]["rgb"])
+
+        pcds = np.concatenate(pcds, axis=0)
+        segs = np.concatenate(segs, axis=0)
+        colors = np.concatenate(colors, axis=0)
+        # segs = segs[..., None]
+
+        width = int(np.round((bounds[0, 1] - bounds[0, 0]) / pixel_size))
+        height = int(np.round((bounds[1, 1] - bounds[1, 0]) / pixel_size))
+
+        heightmap = np.zeros((height, width), dtype=np.float32)
+        segmap = np.zeros((height, width), dtype=int)
+
+        colormap = np.zeros((height, width, 3))
+
+        # Filter out 3D points that are outside of the predefined bounds.
+        ix = (pcds[Ellipsis, 0] >= bounds[0, 0]) & (pcds[Ellipsis, 0] < bounds[0, 1])
+        iy = (pcds[Ellipsis, 1] >= bounds[1, 0]) & (pcds[Ellipsis, 1] < bounds[1, 1])
+        iz = (pcds[Ellipsis, 2] >= bounds[2, 0]) & (pcds[Ellipsis, 2] < bounds[2, 1])
+
+        valid = ix & iy & iz
+
+        # checking that all the pcds lie inside table bounds
+        if np.sum(1 - valid) != 0:
+            print(
+                "Warning: not all pcd boints lie inside table bounds!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!"
+            )
+
+        pcds = pcds[valid]
+        segs = segs[valid]
+        colors = colors[valid, :]
+
+        # Sort 3D points by z-value, which works with array assignment to simulate
+        # z-buffering for rendering the heightmap image.
+        iz = np.argsort(pcds[:, -1])
+        pcds, segs = pcds[iz], segs[iz]
+        px = np.int32(np.floor((pcds[:, 0] - bounds[0, 0]) / pixel_size))
+        py = np.int32(np.floor((pcds[:, 1] - bounds[1, 0]) / pixel_size))
+        px = np.clip(px, 0, width - 1)
+        py = np.clip(py, 0, height - 1)
+        heightmap[py, px] = pcds[:, 2] - bounds[2, 0]
+        segmap[py, px] = segs
+        colormap[py, px, :] = colors
+
+        heightmap = heightmap.T
+        segmap = segmap.T
+        colormap = colormap.T
+        colormap = np.moveaxis(colormap, 0, -1)
+
+        plt.imsave("colormap.png", colormap/255.0)
+
+        return heightmap, segmap
+
+    def get_place_position_new(
+        self, object_id, reference_object_id, place_description, current_image=None
+    ):
+        info = self.object_dicts[reference_object_id]
+        target_description = place_description + " of " + info["used_name"]
+
+        place_locations = {}
+        obj_id = object_id
+
+        # get place positions lying above reference
+        ht = np.max(info["pcd"][:, 2])
+        place_pos = info["object_center"]
+        desc = "above " + info["used_name"]
+        place_locations[desc] = [[*(place_pos[:2]), ht]]
+
+        # get top down segmap exclusing the obj_id
+        hmap, segmap = self.get_segmap(self.object_dicts, to_ignore=[obj_id])
+
+        # sample random points in open spacess
+        empty_space = segmap == 0
+        cv2_array = (empty_space * 255).astype(np.uint8)
+        radius = 20
+        kernel = np.ones((radius, radius), np.uint8)
+        empty_space = cv2.erode(cv2_array, kernel, iterations=1)
+
+        mask = np.zeros_like(empty_space)
+        mask[radius:-radius, radius:-radius] = 255
+        empty_space = empty_space & mask
+        empty_space = np.where(empty_space > 100)
+
+        k = min(len(empty_space[0]), 25)
+        random_pts = random.sample(range(len(empty_space[0])), k)
+        rows = empty_space[0][random_pts]
+        cols = empty_space[1][random_pts]
+
+        obj_lst = list(self.object_dicts.keys())
+        obj_lst.remove(obj_id)
+        # find their descriptions
+        for r, c in zip(rows, cols):
+            xyz = pix_to_xyz(
+                (c, r), 0, self.table_bounds, pixel_size=0.003125, skip_height=True
+            )
+            # segmap[r, c] = 10
+            ht = hmap[r, c]
+            xyz[2] = ht
+
+            obj_pixel_center = info["object_center"]
+            direction_vector = xyz[:2] - obj_pixel_center[:2]
+            labels = get_direction_label(direction_vector, info["used_name"])
+            label = labels[0]
+            if label in place_locations:
+                place_locations[label].append(xyz)
+            else:
+                place_locations[label] = [xyz]
+
+            # plt.imsave("segmap.png", segmap)
+
+        descs = list(place_locations.keys())
+        pixs = []
+        if current_image is None:
+            current_image = segmap
+
+        for d in descs:
+            location = place_locations[d][0]
+            pix = xyz_to_pix(location, self.table_bounds, 0.003125)
+            pixs.append(pix)
+            current_image = draw_gaussian(current_image, pix)
+
+        plt.imsave("segmap.png", current_image)
+        current_image = cv2.imread("segmap.png")
+
+        # count = 1
+        # for pix, d in zip(pixs, descs):
+        #     print("max val", np.max(current_image))
+        #     current_image = cv2.putText(
+        #         current_image,
+        #         str(count),
+        #         pix,
+        #         cv2.FONT_HERSHEY_SIMPLEX,
+        #         0.4,
+        #         (240, 240, 240),
+        #         1,
+        #         cv2.LINE_AA
+        #     )
+        #     count += 1
+        # cv2.imwrite("segmap.png", current_image)
+        # print(descs)
+
+        print(
+            "possible place locations for",
+            obj_id,
+            self.object_dicts[obj_id]["used_name"],
+            place_locations,
+        )
+
+        n = len(place_locations)
+        txts = list(place_locations.keys())
+        txts.append(target_description)
+
+        print(txts)
+        embeddings = self.clip.get_bert_embeddings(txts)
+
+        possibilities = embeddings[:n]
+        mat1 = embeddings[n:]
+
+        prob = mat1 @ possibilities.T
+        print(prob)
+        idx = np.argmax(prob[0])
+
+        print("Chosen location: ", txts[idx])
+        location = random.choice(place_locations[txts[idx]])
+
+        # return the location that is above certain height to account for place object's height
+        # location[2] = location[2]
+        print("coordinates:", location)
+        return location
+
+    def get_place_position(self, obj_id, place_description):
         place_locations = {}
 
         # get place positions lying above other objects
@@ -994,7 +1246,7 @@ class MyRobot(Robot):
 
         # get top down segmap exclusing the obj_id
         _, segmap = self.get_segmap(self.object_dicts, to_ignore=[obj_id])
-        
+
         # sample random points in open spacess
         empty_space = segmap == 0
         cv2_array = (empty_space * 255).astype(np.uint8)
@@ -1012,10 +1264,9 @@ class MyRobot(Robot):
         rows = empty_space[0][random_pts]
         cols = empty_space[1][random_pts]
 
-
         obj_lst = list(self.object_dicts.keys())
         obj_lst.remove(obj_id)
-        # find their descriptions 
+        # find their descriptions
         for r, c in zip(rows, cols):
             xyz = pix_to_xyz(
                 (c, r), 0, self.table_bounds, pixel_size=0.003125, skip_height=True
@@ -1027,15 +1278,20 @@ class MyRobot(Robot):
             else:
                 place_locations[label] = [xyz[:2]]
 
-        print("possible place locations for", obj_id, self.object_dicts[obj_id]["used_name"], place_locations)
-        
+        print(
+            "possible place locations for",
+            obj_id,
+            self.object_dicts[obj_id]["used_name"],
+            place_locations,
+        )
+
         n = len(place_locations)
         txts = list(place_locations.keys())
         txts.append(place_description)
 
         print(txts)
         embeddings = self.clip.get_text_embeddings(txts)
-        
+
         possibilities = embeddings[:n]
         mat1 = embeddings[n:]
 
@@ -1050,8 +1306,12 @@ class MyRobot(Robot):
 
         # find the best match among them with place description given in argumnets
 
-    
     def place(self, obj_id, position):
+
+        if self.picked_pose is None:
+            print("It seems the pick failed, so aborting the place")
+            self.update_dicts()
+            return
 
         pcd_val = self.object_dicts[obj_id]["pcd"]
 
@@ -1060,6 +1320,12 @@ class MyRobot(Robot):
         else:
             print("The intended object needs to be grasped first. Returning")
             return
+
+        place_pose_obj = np.eye(4)
+        place_pose_obj[:3, 3] = position
+        place_pose = place_pose_obj @ self.picked_pose
+
+        position = place_pose[:3, 3]
 
         if len(position) == 2:
             position = [*position, 0.9]
@@ -1085,14 +1351,12 @@ class MyRobot(Robot):
         self.arm.move_ee_xyz([0, 0, 0.15])
         self.arm.go_home()
 
-
         print("place completed")
         self.object_dicts[obj_id]["pcd"] = ("changed", position)
         name = self.object_dicts[obj_id]["used_name"]
         print("Warning: the feedback not linked to successful placement")
         self.feedback_queue.append(f"Placing {name} was successful.")
         self.update_dicts()
-
 
         # self.update_dicts()
 
@@ -1103,28 +1367,117 @@ class MyRobot(Robot):
         print(f"Getting location for object {obj_id}:", position)
         return position
 
-    def find(self, object_name, object_description):
-        print(f"finding object: {object_name}, description: {object_description}")
-        obj_ids = list(self.object_dicts.keys())
-        txts = []
+    def get_all_object_ids(self):
+        return list(self.object_dicts.keys())
+
+    def find(
+        self,
+        object_label=None,
+        visual_description=None,
+        place_description=None,
+        object_ids=None,
+    ):
+        obj_ids = object_ids
+        if obj_ids is None:
+            obj_ids = self.get_all_object_ids()
+
+        # threshold = 0.6
+
+        print(
+            f"finding object: {object_label}, visual_description: {visual_description}, location_description: {place_description}"
+        )
+
+        specified_object = None
+        if object_label is not None:
+            specified_object = object_label
+        elif visual_description is not None:
+            specified_object = visual_description
+        elif place_description is not None:
+            specified_object = place_description
+
+        # obj_ids = list(self.system_env.object_dicts.keys())
         n = len(obj_ids)
-        for oid in obj_ids:
-            name = self.object_dicts[oid]["used_name"]
-            descr = self.object_dicts[oid]["desc"]
-            txts.append(name + " that " + descr)
+        txts = []
+        image_embeddings = []
 
-        prompt = object_name + " described by " + object_description
-        txts.append(prompt)
+        if object_label is not None:
+            template = "This is the {}."
+            used_names = [
+                template.format(self.object_dicts[oid]["used_name"]) for oid in obj_ids
+            ]
 
-        embeddings = self.clip.get_text_embeddings(txts)
+            used_names.append(template.format(object_label))
+            # print("Finding clip embeddings for:", used_names)
+            print("Finding bert embeddings for:", used_names)
+            # clip_embeddings = self.clip.get_text_embeddings(used_names)
+            bert_embeddings = self.clip.get_bert_embeddings(used_names)
+            # label_probs = (clip_embeddings[n:] @ clip_embeddings[:n].T)[0]
+            label_probs = (bert_embeddings[n:] @ bert_embeddings[:n].T)[0]
+            label_threshold = 0.7
+            # todo - set separate threshjolds
+        else:
+            label_probs = np.ones(n, dtype=np.float32)
+            label_threshold = 1.0
 
-        possibilities = embeddings[:n]
-        mat1 = embeddings[n:]
+        if visual_description is not None:
+            visual_embeddings = [self.object_dicts[oid]["embed"] for oid in obj_ids]
+            visual_embeddings = np.array(
+                [np.array(v).mean(axis=0) for v in visual_embeddings]
+            )
 
-        prob = mat1 @ possibilities.T
-        idx = np.argmax(prob[0])
+            print("shape of visual template:", visual_embeddings.shape)
+            text_template = "This is an image of {}"
+            embedding = self.clip.get_text_embeddings(
+                [text_template.format(visual_description)]
+            )
 
+            print("shape of visual text embedding", embedding.shape)
+            visual_probs = (embedding @ visual_embeddings.T)[0]
+
+            visual_threshold = 0.3
+        else:
+            visual_probs = np.ones(n, dtype=np.float32)
+            visual_threshold = 1.0
+
+        if place_description is not None:
+            txts = []
+            for oid in obj_ids:
+                name = self.object_dicts[oid]["used_name"]
+                descr = self.object_dicts[oid]["desc"]
+                txts.append(name + " that " + descr)
+                # txts.append(name)
+
+            txts.append(place_description)
+
+            print("finding bert embeddings for place location", txts)
+            place_embeddings = self.clip.get_bert_embeddings(txts)
+            location_probs = (place_embeddings[n:] @ place_embeddings[:n].T)[0]
+            place_threshold = 0.6
+        else:
+            location_probs = np.ones(n, dtype=np.float32)
+            place_threshold = 1.0
+
+        print("obj ids", obj_ids)
+        print("label probs:", label_probs)
+        print("Visual probs:", visual_probs)
+        print("Location probs:", location_probs)
+
+        final_threshold = label_threshold * visual_threshold * place_threshold
+        similarities = label_probs * visual_probs * location_probs
+        best_score = np.max(similarities)
+        print("Best similarity score and threshold:", best_score, final_threshold)
+
+        if best_score < final_threshold:
+            self.feedback_queue.append(f"{specified_object} not found.")
+            return obj_ids[np.argmax(similarities)]
+
+        idx = np.argmax(similarities)
+        print("Object found!!")
         print("Chosen object: ", obj_ids[idx])
+
+        # if visual_description is None and place_description is None:
+        self.feedback_queue.append(f"{specified_object} found.")
+
         return obj_ids[idx]
 
     def no_action(self):
@@ -1170,41 +1523,124 @@ class MyRobot(Robot):
         self.primitives_running_lst.append(skill_name)
 
         return self.new_skill
+    
+    def get_objects_contained_and_over(self, object_id):
+        object_ids_contained = self.object_dicts[object_id]["relation"]["contains"]
+        object_ids_above = self.object_dicts[object_id]["relation"]["below"]
+        
+        name = self.object_dicts[object_id]["used_name"]
+
+        result = object_ids_contained + object_ids_above
+        if len(result) == 0:
+            self.feedback_queue.append(f"No objects contained in {name}.")
+        else:
+            self.feedback_queue.append(f"some objects found in {name}.")
+        return result 
+
+
+    def get_container_id(self, object_id):
+        container_id = self.object_dicts[object_id]["relation"]["contained_in"]
+        name = self.object_dicts[object_id]["used_name"]
+        if len(container_id) > 0:
+            self.feedback_queue.append(f"container for {name} was found.")
+            return container_id[0]
+        else:
+            self.feedback_queue.append(f"{name} is not contained in anything. no container found.")
+            return None    
+        
+    def dummy(self, *args, **kwargs):
+        print("called with arguments:", *args, **kwargs)
 
     def load_primitives(self):
         self.primitives = {
             "start_task": {
-                "fn": self.start_task,
+                "fn": self.dummy,
                 "description": """
 start_task()
     must be called at the start of any task. It starts the robot.                
-"""
+""",
             },
             "end_task": {
-                "fn": self.end_task,
+                "fn": self.dummy,
                 "description": """
 end_task()
     must be called when a task completes. It stops the robot.                
-"""
+""",
             },
-
-            "find": {
-                "fn": self.find,
+            "get_all_object_ids": {
+                "fn": self.dummy,
                 "description": """
-find(object_name, object_description)
-    Finds an object with the name `object_name`, and additional information about the object given by `object_description`.
+get_all_object_ids()
+    returns a list of all integer object ids present in the scene; 
+    Returns:
+        ids: list(int)
+""",
+            },
+            "get_container_id": {
+                "fn": self.dummy,
+                "description": """
+get_container_id(object_id)
+    gives the id of the object that contains `object_id`
     Arguments:
-        object_name: str
-            Name of the object to find
-        object_description: str
-            Description of the object to find
+        object_id: int
+            id of the object that is contained in some container
+    Returns:
+        container_id: int or None
+            the id of the container that contains `object_id`
+            None is returned when the object_id is not contained in any container.
+""",
+            },
+            "get_objects_contained_and_over": {
+                "fn": self.dummy,
+                "description": """
+get_objects_contained_and_over(object_id)
+    gives the ids of all the objects that lie inside or over `object_id`
+    Arguments:
+        object_id: int
+            id of an object that contains something or over which lie other objects
+    Returns:
+        ids: list(int)
+            the ids of all the objects that lie either inside or over the `object_id`
+            an empty list is returned when nothing lies over or inside.
+                """,
+            },
+            "find": {
+                "fn": self.dummy,
+                "description": """
+find(object_label=None, visual_description=None, place_description=None, object_ids=None)
+Finds an object in the scene given atleast one of object_label, visual description or place description.
+Arguments:
+    object_label: str
+        The name with which the object has been referred to earlier
+        For example, "the second tray", "the third bowl" etc
+        By default, this argument is None
 
-    Returns: int
-        object_id , an integer representing the found object
+    visual_description: str
+        object with some visual description of what it is.
+        For example, "the red mug", "the blue tray", "the checkered box"
+        By default, this argument is None
+        
+    place_description: str
+        a string that describes where the object is located. 
+        For example, to find a bowl that is on the right of the tray, the function call will be 
+        `find("bowl that lies to the right of the tray")`, or to get the mug that is contained in
+        the second bowl, the call would be `find("mug that is inside the second bowl") and so on.
+        By default, this argument is None
+
+    object_ids: list(int)
+        A list of `int` object ids in which the object should be found, when specified.
+        By default when this argument is None, all the objects are considered for 
+        finding the best matching 
+    
+    Atleast one of the first three arguments must be specified. Typically, the use of the first and 
+    the second argument is enough but third can be used whenver needed.
+        
+Returns: int
+    object_id, an integer representing the object that best matched with the description
 """,
             },
             "get_location": {
-                "fn": self.get_location,
+                "fn": self.dummy,
                 "description": """
 get_location(object_id)
     gives the location of the object `object_id`
@@ -1216,22 +1652,23 @@ get_location(object_id)
             the location of the object
 """,
             },
-#             "move_arm": {
-#                 "fn": self.move_arm,
-#                 "description": """
-# move_arm(position)
-#     Moves to the robotic arm to a location given by position
-#     Arguments:
-#         position: 3D array
-#             the location to move the arm to
-#     Returns: None
-# """,
-#             },
+            #             "move_arm": {
+            #                 "fn": self.move_arm,
+            #                 "description": """
+            # move_arm(position)
+            #     Moves to the robotic arm to a location given by position
+            #     Arguments:
+            #         position: 3D array
+            #             the location to move the arm to
+            #     Returns: None
+            # """,
+            #             },
             "pick": {
-                "fn": self.pick,
+                "fn": self.dummy,
                 "description": """
 pick(object_id)
-    Picks up an object that `object_id` represents.
+    Picks up an object that `object_id` represents. A `place` needs to occur before 
+    another call to pick, i.e. two picks cannot occur one after the other
     Arguments:
         object_id: int
             Id of the object to pick
@@ -1239,22 +1676,34 @@ pick(object_id)
 """,
             },
             "get_place_position": {
-                "fn": self.get_place_position,
+                "fn": self.dummy,
                 "description": """
-get_place_position(object_id, place_description)
+get_place_position(object_id, reference_object_id, place_description)
     Finds the position to place the object `object_id` at a location described by `place_description`
+    with respect to the `reference_object_id`. 
     Arguments:
         object_id: int
             Id of the object to place
+        reference_object_id: int
+            id of the object relevant for placing the object_id
         place_description: str
-            a string that describes the place position in relation to other objects.
-            For example, "over objectB", "to the left of objectA", etc.
+            a string that describes where with respect to the reference_object_id
+            the object_id should be placed.
+
     Returns: 3D array
         the [x, y, z] value for the place location is returned.
-""",
+
+    For example, 
+    to place a mug to the left of a bowl, the following function call should be used
+        get_place_position(mug_id, bowl_id, "to the left")
+    to place a mug into a bowl:
+        get_place_position(mug_id, bowl_id, "inside")
+    to place a mug above a box:
+        get_place_position(mug_id, box_id, "above")
+                """,
             },
             "place": {
-                "fn": self.place,
+                "fn": self.dummy,
                 "description": """
 place(object_id, position)
     Moves to the position and places the object `object_id`, at the location given by `position`
@@ -1266,24 +1715,24 @@ place(object_id, position)
     Returns: None
 """,
             },
-#             "place": {
-#                 "fn": self.place,
-#                 "description": """
-# place(object_id_1, object_id_2)
-#     Moves 'object_id_1' over to 'object_id_2'
-#     Arguments:
-#         object_id_1: int
-#             Id of the object to place
-#         object_id_2: int
-#             Id of the object to place relative to
-#     Returns: None
-# """,
-#             },
+            #             "place": {
+            #                 "fn": self.place,
+            #                 "description": """
+            # place(object_id_1, object_id_2)
+            #     Moves 'object_id_1' over to 'object_id_2'
+            #     Arguments:
+            #         object_id_1: int
+            #             Id of the object to place
+            #         object_id_2: int
+            #             Id of the object to place relative to
+            #     Returns: None
+            # """,
+            #             },
         }
 
         if self.skill_learner:
             self.primitives["learn_skill"] = {
-                "fn": self.learn_skill,
+                "fn": self.dummy,
                 "description": """
 learn_skill(skill_name)
     adds a new skill to the current list of skills
@@ -1321,25 +1770,22 @@ learn_skill(skill_name)
 
         return self.primitives
 
-
     # def check_update_dicts(self):
 
     #     input("press enter after setting the first scene")
     #     first_dict = self.get_object_dicts()
-    #     first_desc, first_dict = self.get_scene_description(first_dict)        
-        
+    #     first_desc, first_dict = self.get_scene_description(first_dict)
+
     #     self.object_dicts = first_dict
 
     #     print_object_dicts(first_dict)
 
     #     print("first description:", first_desc)
 
-
     #     obj_id_to_pick = int(input("enter object_id to pick"))
     #     self.pick(obj_id_to_pick)
 
     #     print("feedback queue", self.feedback_queue)
-
 
     #     self.place(obj_id_to_pick, np.zeros(2))
 
@@ -1351,7 +1797,7 @@ learn_skill(skill_name)
 
     #     final_desc, final_dict = self.update_dict_util(first_dict, second_dict)
     #     print_object_dicts(final_dict)
-        
+
     #     for obj_id in final_dict:
     #         obj_pcd = final_dict[obj_id]["pcd"]
     #         rgb = final_dict[obj_id]["rgb"]
@@ -1360,12 +1806,10 @@ learn_skill(skill_name)
     #         name = f"final_{obj_id}"
     #         util.meshcat_pcd_show(self.mc_vis, obj_pcd, color=None, name=f"scene/second_{name}_{obj_id}")
 
-
     #     obj_id_to_pick = int(input("enter object_id to pick"))
     #     self.pick(obj_id_to_pick)
 
     #     print("feedback queue", self.feedback_queue)
-
 
     #     self.place(obj_id_to_pick, np.zeros(2))
     #     print("feedback queue", self.feedback_queue)
@@ -1376,7 +1820,7 @@ learn_skill(skill_name)
 
     #     final_desc, final_dict = self.update_dict_util(first_dict, second_dict)
     #     print_object_dicts(final_dict)
-        
+
     #     for obj_id in final_dict:
     #         obj_pcd = final_dict[obj_id]["pcd"]
     #         rgb = final_dict[obj_id]["rgb"]

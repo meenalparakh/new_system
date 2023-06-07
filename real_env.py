@@ -169,7 +169,7 @@ def get_segmentation_mask(
         masks, scores, logits = predictor.predict(box=bbs[j], multimask_output=False)
         mask = masks[0]
 
-        kerne_size = 20
+        kerne_size = 10
         mask = cv2.erode(
             np.copy(mask * 255).astype(np.uint8),
             kernel=np.ones((kerne_size, kerne_size), dtype=np.uint8),

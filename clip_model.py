@@ -2,13 +2,14 @@ import clip
 import torch
 import numpy as np
 from PIL import Image
-
+from sentence_transformers import SentenceTransformer
+from airobot import log_debug
 
 class MyCLIP:
     def __init__(self, device=None, model_type="ViT-B/32"):
         # self.is_cuda = is_cuda
 
-        print("The following models are available:", clip.available_models())
+        log_debug(f"The following models are available: {clip.available_models()}")
         if not (model_type in clip.available_models()):
             print(f"model_type {model_type} not available. Defaulting to ViT-B/32")
             model_type = "ViT-B/32"
@@ -19,13 +20,15 @@ class MyCLIP:
         else:
             self.device = device
 
-        print("CLIP model running on", self.device)
+        log_debug(f"CLIP model running on {self.device}")
 
         if self.device == "cuda":
             self.model = model.cuda().eval()
 
         else:
             self.model = model.to(self.device).float().eval()
+
+        self.bert_model = None
 
         # self.model = model.to(self.device).eval()
         self.image_preprocess = preprocess
@@ -60,3 +63,12 @@ class MyCLIP:
         image_features = self.get_image_embeddings(rgbs)
         similarity = text_features @ image_features.T
         return similarity
+
+    def get_bert_embeddings(self, sentences):
+        if self.bert_model is None:
+            self.bert_model = SentenceTransformer('stsb-mpnet-base-v2')
+
+        embeddings = self.bert_model.encode(sentences)
+        embeddings = embeddings/np.linalg.norm(embeddings, axis=1, keepdims=True)
+        return embeddings
+
