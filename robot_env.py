@@ -927,6 +927,16 @@ class MyRobot(Robot):
                 grasp_idx = np.argmax(pred_success)
             grasp_pose = pred_grasps[grasp_idx]
 
+        grasp_euler = np.array(R.from_matrix(grasp_pose[:3, :3]).as_euler('XYZ'))
+        if grasp_euler[2] > np.pi/2:
+            grasp_euler[2] = grasp_euler[2] - np.pi
+
+        if grasp_euler[2] < -np.pi/2:
+            grasp_euler[2] = grasp_euler[2] + np.pi
+
+        new_rotation = R.from_euler("XYZ", grasp_euler).as_matrix()
+        grasp_pose[:3, :3] = new_rotation
+
         self.predicted_pose = (obj_id, grasp_pose)
         pick_pose_mat = self.pick_given_pose(grasp_pose)
         # self.arm.go_home()
@@ -1072,7 +1082,7 @@ class MyRobot(Robot):
             bounds = self.table_bounds
 
         pcds, segs = [], []
-        colors = []
+        # colors = []
 
         for oid in object_dicts:
             assert oid > 0, "error: the object ids start with zero?"
@@ -1084,11 +1094,11 @@ class MyRobot(Robot):
 
             pcds.append(p)
             segs.append(m)
-            colors.append(object_dicts[oid]["rgb"])
+            # colors.append(object_dicts[oid]["rgb"])
 
         pcds = np.concatenate(pcds, axis=0)
         segs = np.concatenate(segs, axis=0)
-        colors = np.concatenate(colors, axis=0)
+        # colors = np.concatenate(colors, axis=0)
         # segs = segs[..., None]
 
         width = int(np.round((bounds[0, 1] - bounds[0, 0]) / pixel_size))
@@ -1097,7 +1107,7 @@ class MyRobot(Robot):
         heightmap = np.zeros((height, width), dtype=np.float32)
         segmap = np.zeros((height, width), dtype=int)
 
-        colormap = np.zeros((height, width, 3))
+        # colormap = np.zeros((height, width, 3))
 
         # Filter out 3D points that are outside of the predefined bounds.
         ix = (pcds[Ellipsis, 0] >= bounds[0, 0]) & (pcds[Ellipsis, 0] < bounds[0, 1])
@@ -1114,7 +1124,6 @@ class MyRobot(Robot):
 
         pcds = pcds[valid]
         segs = segs[valid]
-        colors = colors[valid, :]
 
         # Sort 3D points by z-value, which works with array assignment to simulate
         # z-buffering for rendering the heightmap image.
@@ -1126,14 +1135,14 @@ class MyRobot(Robot):
         py = np.clip(py, 0, height - 1)
         heightmap[py, px] = pcds[:, 2] - bounds[2, 0]
         segmap[py, px] = segs
-        colormap[py, px, :] = colors
+        # colormap[py, px, :] = colors
 
         heightmap = heightmap.T
         segmap = segmap.T
-        colormap = colormap.T
-        colormap = np.moveaxis(colormap, 0, -1)
+        # colormap = colormap.T
+        # colormap = np.moveaxis(colormap, 0, -1)
 
-        plt.imsave("colormap.png", colormap/255.0)
+        # plt.imsave("colormap.png", colormap/255.0)
 
         return heightmap, segmap
 

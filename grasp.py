@@ -34,6 +34,7 @@ def control_robot(
     linear_offset=-0.022,
     action="pick",
 ):
+
     """
     Given the position and quaternion of target pose, choose the robot arm and control mode, then control the robot
     gripper to target pose
