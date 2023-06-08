@@ -192,7 +192,11 @@ class MyRobot(Robot):
                                       [0, -1, 0, 0.0],
                                       [0, 0, -1, 1.35],
                                       [0, 0, 0, 1.]])
-
+        self.action_ee_pose = np.array([[1, 0, 0, 0.40],
+                                      [0, -1, 0, 0.0],
+                                      [0, 0, -1, 1.40],
+                                      [0, 0, 0, 1.]])
+        
         success = self.arm.go_home()
         if not success:
             log_warn("Robot go_home failed!!!")
@@ -459,7 +463,7 @@ class MyRobot(Robot):
                 possible_matchings.append((not_matched[0], k[0]))
                 for cid, nid in possible_matchings:
                     original_dict[cid]["pcd"] = new_dict[nid]["pcd"]
-                    original_dict[cid]["relation"] = new_dict[nid]["relation"]
+                    # original_dict[cid]["relation"] = new_dict[nid]["relation"]
 
                 description, original_dict = self.get_scene_description(original_dict, change_uname=False)
 
@@ -476,6 +480,14 @@ class MyRobot(Robot):
         # return original_dict
 
         return description, original_dict
+    
+    def move_to_home(self):
+        cur_pos, cur_quat, _, cur_euler = self.arm.get_ee_pose()
+        delta_pos = np.array(self.action_ee_pose[:3, 3]) - np.array(cur_pos)
+        self.arm.move_ee_xyz(delta_pos)
+        self.arm.set_ee_pose()
+        self.arm.set_ee_pose(pos=self.action_ee_pose[:3, 3], ori=self.action_ee_pose[:3, :3])
+
 
     def update_dicts(self):
         """
@@ -891,6 +903,7 @@ class MyRobot(Robot):
     def pick(self, obj_id, visualize=False, grasp_pose=None):
         # self.obs_lst.append(self.get_obs())
         # self.arm.go_home()
+        self.move_to_home()
 
         if grasp_pose is None:
             pred_grasps, pred_success = self.get_grasp(
@@ -926,7 +939,7 @@ class MyRobot(Robot):
         
 
         name = self.object_dicts[obj_id]["used_name"]
-        self.object_dicts[obj_id]["pcd"] = "in_air"
+        # self.object_dicts[obj_id]["pcd"] = "in_air"
         print(
             "Warning: the feedback is not actually checking the pick success. Make it conditioned"
         )
@@ -1316,6 +1329,7 @@ class MyRobot(Robot):
     def place(self, obj_id, position, skip_update=False):
 
         # self.arm.go_home()
+        self.move_to_home()
 
         if self.picked_pose is None:
             print("It seems the pick failed, so aborting the place")
@@ -1324,11 +1338,11 @@ class MyRobot(Robot):
 
         pcd_val = self.object_dicts[obj_id]["pcd"]
 
-        if isinstance(pcd_val, str) and pcd_val == "in_air":
-            print("The object is in grasp")
-        else:
-            print("The intended object needs to be grasped first. Returning")
-            return
+        # if isinstance(pcd_val, str) and pcd_val == "in_air":
+        #     print("The object is in grasp")
+        # else:
+        #     print("The intended object needs to be grasped first. Returning")
+        #     return
 
         place_pose_obj = np.eye(4)
         place_pose_obj[:3, 3] = position

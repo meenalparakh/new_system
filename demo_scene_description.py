@@ -39,7 +39,7 @@ OBJECTS = {
     },
     "bowl": {
         "pos_ht": 1.2,
-        "scale": 0.2,
+        "scale": 0.25,
         "urdfs": bowls_urdf,
         "mass": 0.2,
         "ori": R.from_euler("xyz", [np.pi/2, 0, 0]).as_quat(),
@@ -102,7 +102,7 @@ if __name__ == "__main__":
     for il in range(num_lower):
         for iu in range(num_upper):
 
-            random_position = np.array([0.4, 0.28])
+            random_position = np.array([0.5, 0.3])
 
             robot.reset(ObjectsPick, lower, il, random_position)
             for _ in range(500):
