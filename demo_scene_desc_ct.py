@@ -219,65 +219,66 @@ if __name__ == "__main__":
             num_o = len(OBJECTS[o]["urdfs"])
             num_recap = len(OBJECTS[recap]["urdfs"])
 
-            im = random.choice(range((num_recap)))
-            il = random.choice(range((num_recap)))
-            iu = random.choice(range((num_o)))
-            ik = random.choice(range((num_o)))
+            for _ in range(4):
+                im = random.choice(range((num_recap)))
+                il = random.choice(range((num_recap)))
+                iu = random.choice(range((num_o)))
+                ik = random.choice(range((num_o)))
 
-            print(f"Run {total_count} ..................................")
+                print(f"Run {total_count} ..................................")
 
-            robot.reset(ObjectsPick, o, recap, im, il, iu, ik)
+                robot.reset(ObjectsPick, o, recap, im, il, iu, ik)
 
-            object_dicts = robot.get_object_dicts()
-            robot.scene_description = robot.get_scene_description(object_dicts)[0]
-            print(Fore.RED + robot.scene_description)
-            print(Fore.BLACK)
+                object_dicts = robot.get_object_dicts()
+                robot.scene_description = robot.get_scene_description(object_dicts)[0]
+                print(Fore.RED + robot.scene_description)
+                print(Fore.BLACK)
 
-            robot.init_dicts(object_dicts)
-            robot.print_object_dicts(object_dicts)
+                robot.init_dicts(object_dicts)
+                robot.print_object_dicts(object_dicts)
 
-            robot.start_task()
+                robot.start_task()
 
-            # Step 1: Identify all objects
-            all_object_ids = robot.get_all_object_ids()
+                # Step 1: Identify all objects
+                all_object_ids = robot.get_all_object_ids()
 
-            # Step 2: Identify the first tray and the can it contains
-            first_tray_id = robot.find(object_label="the first "+recap, object_ids=all_object_ids)
-            objects_in_first_tray = robot.get_objects_contained_and_over(first_tray_id)
+                # Step 2: Identify the first tray and the can it contains
+                first_tray_id = robot.find(object_label="the first "+recap, object_ids=all_object_ids)
+                objects_in_first_tray = robot.get_objects_contained_and_over(first_tray_id)
 
-            # Check if the first tray already contains a can
-            for obj_id in objects_in_first_tray:
-                if robot.get_container_id(obj_id) == first_tray_id:
-                    first_can_id = obj_id
-                    break
+                # Check if the first tray already contains a can
+                for obj_id in objects_in_first_tray:
+                    if robot.get_container_id(obj_id) == first_tray_id:
+                        first_can_id = obj_id
+                        break
 
-            # Step 3: Identify the second can
-            second_can_id = robot.find(object_label="the second "+ o, object_ids=all_object_ids)
+                # Step 3: Identify the second can
+                second_can_id = robot.find(object_label="the second "+ o, object_ids=all_object_ids)
 
-            # Step 4: Pick the second can
-            robot.pick(second_can_id)
+                # Step 4: Pick the second can
+                robot.pick(second_can_id)
 
-            # Step 5: Identify the second tray
-            second_tray_id = robot.find(object_label="the second "+recap, object_ids=all_object_ids)
+                # Step 5: Identify the second tray
+                second_tray_id = robot.find(object_label="the second "+recap, object_ids=all_object_ids)
 
-            # Step 6: Get the place position in the second tray
-            place_position = robot.get_place_position_new(second_can_id, second_tray_id, "over")
+                # Step 6: Get the place position in the second tray
+                place_position = robot.get_place_position_new(second_can_id, second_tray_id, "over")
 
-            # Step 7: Place the second can in the second tray
-            robot.place(second_can_id, place_position, skip_update=True)
+                # Step 7: Place the second can in the second tray
+                robot.place(second_can_id, place_position, skip_update=True)
 
-            robot.end_task()
+                robot.end_task()
 
 
 
-            cam = robot.cams[1]
-            rgb, _ = cam.get_images(get_rgb=True, get_depth=False, get_seg=False)
-            plt.imsave(f"pick_images/{total_count}.png", rgb.astype(np.uint8))
+                cam = robot.cams[1]
+                rgb, _ = cam.get_images(get_rgb=True, get_depth=False, get_seg=False)
+                plt.imsave(f"pick_images/{total_count}.png", rgb.astype(np.uint8))
 
-            input("Press enter to continue")
-            robot.gripper.release()
-            robot.remove_objects()
-            total_count += 1
-            print(Fore.GREEN + f"Current success rate: {count/total_count}")
-            print(Fore.BLACK)
+                input("Press enter to continue")
+                robot.gripper.release()
+                robot.remove_objects()
+                total_count += 1
+                print(Fore.GREEN + f"Current success rate: {count/total_count}")
+                print(Fore.BLACK)
 

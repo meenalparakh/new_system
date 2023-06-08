@@ -198,13 +198,6 @@ if __name__ == "__main__":
             # robot.reset(ComplexPlacement, "shelf", 0)
             for _ in range(500):
                 robot.pb_client.stepSimulation()
-            # robot.reset(ComplexPlacement, "tray", 0)
-            # for _ in range(500):
-            #     robot.pb_client.stepSimulation()
-            # robot.reset(ComplexPlacement, "mug", 0)
-            # for _ in range(500):
-            #     robot.pb_client.stepSimulation()
-          
 
             object_dicts = robot.get_object_dicts()
             robot.scene_description = robot.get_scene_description(object_dicts)[0]
