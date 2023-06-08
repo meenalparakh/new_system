@@ -133,6 +133,7 @@ def visualize_pcd(xyz, colors=None):
 
     open3d.visualization.draw_geometries([pcd])
 
+from airobot.cfgs.assets.robotiq2f140 import get_robotiq2f140_cfg
 
 class MyRobot(Robot):
     def __init__(
@@ -148,6 +149,7 @@ class MyRobot(Robot):
         super().__init__(
             "franka",
             pb_cfg={"gui": gui},
+            # eetool_cfg=get_robotiq2f140_cfg()
             # use_arm=False,
             # use_eetool=False,
             # use_base=False,
@@ -186,6 +188,34 @@ class MyRobot(Robot):
         self.new_task = True
         self.load_primitives()
 
+        self.home_ee_pose = np.array([[1, 0, 0, 0.20],
+                                      [0, -1, 0, 0.0],
+                                      [0, 0, -1, 1.35],
+                                      [0, 0, 0, 1.]])
+
+        success = self.arm.go_home()
+        if not success:
+            log_warn("Robot go_home failed!!!")
+
+        self.object_dicts = {}
+        self.sim_dict = {"object_dicts": {}}
+
+        # setup table
+        ori = euler2quat([0, 0, np.pi / 2])
+        self.table_id = self.pb_client.load_urdf(
+            "table/table.urdf", [0.6, 0, 0.4], ori, scaling=0.9
+        )
+        print("Table id", self.table_id)
+        self.pb_client.changeDynamics(self.table_id, 0, mass=0, lateralFriction=2.0)
+        self.table_bounds = np.array([[0.05, 0.95], [-0.5, 0.5], [0.85, 3.0]])
+
+        # setup plane
+        # self.plane_id = self.pb_client.load_urdf("plane.urdf")
+
+        # setup camera
+        self._setup_cameras()
+        self.depth_scale = 1.0
+
     def start_task(self):
         self.new_task = False
 
@@ -209,27 +239,8 @@ class MyRobot(Robot):
         if not success:
             log_warn("Robot go_home failed!!!")
 
-        # setup table
-        ori = euler2quat([0, 0, np.pi / 2])
-        self.table_id = self.pb_client.load_urdf(
-            "table/table.urdf", [0.6, 0, 0.4], ori, scaling=0.9
-        )
-        print("Table id", self.table_id)
-        self.pb_client.changeDynamics(self.table_id, 0, mass=0, lateralFriction=2.0)
-        self.table_bounds = np.array([[0.05, 0.95], [-0.5, 0.5], [0.85, 3.0]])
-
-        # setup plane
-        # self.plane_id = self.pb_client.load_urdf("plane.urdf")
-
-        # setup camera
-        self._setup_cameras()
-        self.depth_scale = 1.0
-
         # focus_pt = [0, 0, 1]  # ([x, y, z])
         # self.cam.setup_camera(focus_pt=focus_pt, dist=3, yaw=90, pitch=0, roll=0)
-
-        self.object_dicts = {}
-        self.sim_dict = {"object_dicts": {}}
 
         if isinstance(task_name, str):
             self.task = TASK_LST[task_name](self, *args)
@@ -237,18 +248,6 @@ class MyRobot(Robot):
             self.task = task_name(self, *args)  # assuming the class type has been passed
         
         self.task.reset()
-
-        # for _ in range(100):
-        #     self.pb_client.stepSimulation()
-
-        self.airobot_arm_fns = {
-            "ur5e:open": lambda: self.arm.eetool.open,
-            "ur5e:close": lambda: self.arm.eetool.close,
-            "ur5e:get_pose": lambda: self.arm.get_ee_pose,
-            "ur5e:set_pose": lambda: self.arm.set_ee_pose,
-            "ur5e:move_xyz": lambda: self.arm.move_ee_xyz,
-            "ur5e:home": lambda: self.arm.go_home,
-        }
 
     def crop_pcd(self, pts, rgb=None, segs=None, bounds=None):
         if bounds is None:
@@ -286,6 +285,7 @@ class MyRobot(Robot):
             The two images are concatenated together.
             The returned observation shape is [2H, W, 3].
         """
+        self.arm.set_ee_pose(pos=self.home_ee_pose[:3, 3], ori=self.home_ee_pose[:3, :3])
 
         all_obj_ids = [v["mask_id"] for k, v in self.sim_dict["object_dicts"].items()]
         first_obj = min(all_obj_ids)
@@ -322,16 +322,16 @@ class MyRobot(Robot):
             )
 
         self.cams[0].setup_camera(
-            focus_pt=[0.5, 0.0, 1.0], dist=1, yaw=-90, pitch=-45, roll=0
+            focus_pt=[0.5, 0.0, 1.0], dist=1, yaw=0, pitch=-45, roll=0
         )
         self.cams[1].setup_camera(
             focus_pt=[0.5, 0.0, 1.0], dist=1, yaw=90, pitch=-45, roll=0
         )
         self.cams[2].setup_camera(
-            focus_pt=[0.5, 0.0, 1.0], dist=1, yaw=0, pitch=-45, roll=0
+            focus_pt=[0.5, 0.0, 1.0], dist=1, yaw=0, pitch=-90, roll=0
         )
         self.cams[3].setup_camera(
-            focus_pt=[0.5, 0.0, 1.0], dist=1, yaw=0, pitch=-90, roll=0
+            focus_pt=[0.5, 0.0, 1.0], dist=1, yaw=180, pitch=-45, roll=0
         )
 
     def get_combined_pcd(self, colors, depths, idx=None):
@@ -459,8 +459,9 @@ class MyRobot(Robot):
                 possible_matchings.append((not_matched[0], k[0]))
                 for cid, nid in possible_matchings:
                     original_dict[cid]["pcd"] = new_dict[nid]["pcd"]
+                    original_dict[cid]["relation"] = new_dict[nid]["relation"]
 
-                # description, original_dict = self.get_scene_description(original_dict, change_uname=False)
+                description, original_dict = self.get_scene_description(original_dict, change_uname=False)
 
             else:
                 print("Objects could not be uniquely matched. Resetting the dict")
@@ -468,13 +469,13 @@ class MyRobot(Robot):
 
         if reset:
             original_dict = new_dict
-            # description, original_dict = self.get_scene_description(original_dict)
+            description, original_dict = self.get_scene_description(original_dict)
 
-        # print(description)
+        print(description)
 
-        return original_dict
+        # return original_dict
 
-        # return description, original_dict
+        return description, original_dict
 
     def update_dicts(self):
         """
@@ -555,6 +556,7 @@ class MyRobot(Robot):
         # count = 0
         for s, c in zip(segs, colors):
             unique_ids = np.unique(s.astype(int))
+            print("unique ids in segmentation mask", unique_ids)
             unique_ids = unique_ids[unique_ids >= 0]
             image_crops = []
             for uid in unique_ids:
@@ -886,33 +888,42 @@ class MyRobot(Robot):
 
         return pred_grasps, pred_success
 
-    def pick(self, obj_id, visualize=False):
+    def pick(self, obj_id, visualize=False, grasp_pose=None):
         # self.obs_lst.append(self.get_obs())
-        self.arm.go_home()
+        # self.arm.go_home()
 
-        pred_grasps, pred_success = self.get_grasp(
-            obj_id, threshold=0.8, add_floor=self.bg_pcd, visualize=visualize
-        )
-
-        if pred_grasps is None:
-            print("Again, no grasps found. Need help with completing the pick.")
-            pos, ori = self.pb_client.getBasePositionAndOrientation(obj_id)
-            self.pb_client.resetBasePositionAndOrientation(
-                obj_id, [0.5, -0.6, 0.5], ori
+        if grasp_pose is None:
+            pred_grasps, pred_success = self.get_grasp(
+                obj_id, threshold=0.8, add_floor=self.bg_pcd, visualize=visualize
             )
-            for _ in range(100):
-                self.pb_client.stepSimulation()
-            print("Teleported in simulator")
-            return
 
-        # grasp_idx = random.choice(range(len(grasps)))
+            if pred_grasps is None:
+                print("Again, no grasps found. Need help with completing the pick.")
+                pos, ori = self.pb_client.getBasePositionAndOrientation(obj_id)
+                self.pb_client.resetBasePositionAndOrientation(
+                    obj_id, [0.5, -0.6, 0.5], ori
+                )
+                for _ in range(100):
+                    self.pb_client.stepSimulation()
+                print("Teleported in simulator")
+                return
+
+            # grasp_idx = random.choice(range(len(grasps)))
+
+            grasp_idx = np.argmax(pred_success)
+            grasp_pose = pred_grasps[grasp_idx]
+
+        self.predicted_pose = (obj_id, grasp_pose)
+        pick_pose_mat = self.pick_given_pose(grasp_pose)
+        # self.arm.go_home()
+
+
         pcd = self.object_dicts[obj_id]["pcd"]
         color = self.object_dicts[obj_id]["rgb"]
-        grasp_idx = np.argmax(pred_success)
-        grasp_pose = pred_grasps[grasp_idx]
-
-        pick_pose_mat = self.pick_given_pose(grasp_pose)
-        self.arm.go_home()
+        object_pose = np.eye(4)
+        object_pose[:3, 3] = np.mean(pcd, axis=0)
+        self.picked_pose = np.linalg.inv(object_pose) @ pick_pose_mat
+        
 
         name = self.object_dicts[obj_id]["used_name"]
         self.object_dicts[obj_id]["pcd"] = "in_air"
@@ -920,10 +931,6 @@ class MyRobot(Robot):
             "Warning: the feedback is not actually checking the pick success. Make it conditioned"
         )
 
-        object_pose = np.eye(4)
-        object_pose[:3, 3] = np.mean(pcd, axis=0)
-        self.picked_pose = np.linalg.inv(object_pose) @ pick_pose_mat
-        
         self.feedback_queue.append(f"{name} was picked successfullly.")
 
     def pick_given_pose(self, pick_pose, translate=0.13):
@@ -953,7 +960,7 @@ class MyRobot(Robot):
         if self.gripper:
             self.gripper.activate()
 
-        self.arm.move_ee_xyz([0, 0, 0.15])
+        self.arm.move_ee_xyz([0, 0, 0.20])
 
         # self.obs_lst.append(self.get_obs())
 
@@ -1137,7 +1144,7 @@ class MyRobot(Robot):
         # sample random points in open spacess
         empty_space = segmap == 0
         cv2_array = (empty_space * 255).astype(np.uint8)
-        radius = 20
+        radius = 10
         kernel = np.ones((radius, radius), np.uint8)
         empty_space = cv2.erode(cv2_array, kernel, iterations=1)
 
@@ -1146,7 +1153,7 @@ class MyRobot(Robot):
         empty_space = empty_space & mask
         empty_space = np.where(empty_space > 100)
 
-        k = min(len(empty_space[0]), 25)
+        k = min(len(empty_space[0]), 50)
         random_pts = random.sample(range(len(empty_space[0])), k)
         rows = empty_space[0][random_pts]
         cols = empty_space[1][random_pts]
@@ -1306,7 +1313,9 @@ class MyRobot(Robot):
 
         # find the best match among them with place description given in argumnets
 
-    def place(self, obj_id, position):
+    def place(self, obj_id, position, skip_update=False):
+
+        # self.arm.go_home()
 
         if self.picked_pose is None:
             print("It seems the pick failed, so aborting the place")
@@ -1356,7 +1365,9 @@ class MyRobot(Robot):
         name = self.object_dicts[obj_id]["used_name"]
         print("Warning: the feedback not linked to successful placement")
         self.feedback_queue.append(f"Placing {name} was successful.")
-        self.update_dicts()
+
+        if not skip_update:
+            self.update_dicts()
 
         # self.update_dicts()
 
@@ -1769,6 +1780,13 @@ learn_skill(skill_name)
         self.primitives_running_lst = list(self.primitives.keys())
 
         return self.primitives
+
+    def remove_objects(self):
+        for idx, obj_info in self.sim_dict["object_dicts"].items():
+            obj_id = obj_info["mask_id"]
+            self.pb_client.removeBody(obj_id)
+        self.sim_dict["object_dicts"] = {}
+        self.object_dicts = {}
 
     # def check_update_dicts(self):
 

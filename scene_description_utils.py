@@ -277,7 +277,7 @@ def get_object_label_wrt_table(direction_vector):
 
 def get_direction_label(direction_vector, obj_name):
     lst = {
-        0: f"very close to {obj_name}",
+        0: f"close to {obj_name}",
         1: f"to the right of {obj_name}",
         2: f"to {obj_name}'s right side",
         3: f"to the left of {obj_name}",
@@ -304,8 +304,8 @@ def get_direction_label(direction_vector, obj_name):
         + f" to the {side}, at a distance of {dist*100} cm"
     )
 
-    if dist < 0.05:
-        return [lst[0]]
+    if dist < 0.10:
+        return [lst[0], lst[16]]
     elif dist > 0.20:
         dist_label = "farther"
     else:
@@ -423,12 +423,24 @@ def text_description(object_dicts, traversal_order, path, side="right", change_u
     )
 
     contained_lst = first_object_dict["relation"]["contains"]
+    another_level = []
+    for i in contained_lst:
+        another_level.extend(object_dicts[i]["relation"]["contains"])
+        another_level.extend(object_dicts[i]["relation"]["below"])
+    contained_lst.extend(another_level)
+
     contained_object_names = [object_dicts[n]["used_name"] for n in contained_lst]
     contained_line = contains_template(
         contained_object_names, first_object_dict["used_name"], voice="active"
     )
 
     above_lst = first_object_dict["relation"]["below"]
+    another_level = []
+    for i in above_lst:
+        another_level.extend(object_dicts[i]["relation"]["contains"])
+        another_level.extend(object_dicts[i]["relation"]["below"])
+    above_lst.extend(another_level)
+
     above_object_names = [object_dicts[n]["used_name"] for n in above_lst]
     above_line = placed_over_template(
         above_object_names, first_object_dict["used_name"]

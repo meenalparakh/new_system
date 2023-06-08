@@ -18,6 +18,14 @@ import torch
 
 subprocess.run(["cp", "demo_detic.py", "Detic/"])
 
+COLORS = [
+    np.array([38, 84, 124])/255.0,
+    np.array([239, 71, 111])/255.0,
+    np.array([100, 209, 202])/255.0,
+    np.array([240, 214, 160])/255.0
+]
+
+
 
 def get_detic_predictions(images, vocabulary="lvis", custom_vocabulary="", device=None):
     image_dir = "current_images"
@@ -36,16 +44,16 @@ def get_detic_predictions(images, vocabulary="lvis", custom_vocabulary="", devic
 
     if device is None:
         device = "cuda" if torch.cuda.is_available() else "cpu"
-    subprocess.run(
-        [
-            "./run_detect_grasp_scripts.sh",
-            "detect",
-            os.path.abspath(image_dir),
-            vocabulary,
-            custom_vocabulary,
-            device,
-        ]
-    )
+    # subprocess.run(
+    #     [
+    #         "./run_detect_grasp_scripts.sh",
+    #         "detect",
+    #         os.path.abspath(image_dir),
+    #         vocabulary,
+    #         custom_vocabulary,
+    #         device,
+    #     ]
+    # )
 
     with open("./Detic/predictions_summary.pkl", "rb") as f:
         info_dict, names = pickle.load(f)
@@ -81,9 +89,9 @@ def get_bb_labels(pred, names):
     return pred_boxes, pred_labels
 
 
-def show_mask(mask, ax, random_color=False):
+def show_mask(mask, ax, idx, random_color=False):
     if random_color:
-        color = np.concatenate([np.random.random(3), np.array([0.6])], axis=0)
+        color = np.concatenate([COLORS[idx], np.array([0.6])], axis=0)
     else:
         color = np.array([30 / 255, 144 / 255, 255 / 255, 0.6])
     h, w = mask.shape[-2:]
@@ -147,6 +155,8 @@ def get_segmentation_mask(
     embedding_dict = {}
 
     results = []
+    plt.figure(figsize=(10, 10))
+    plt.imshow(image)
     for j in range(len(bbs)):
         c1, r1, c2, r2 = bbs[j]
         margin = 1
@@ -155,21 +165,23 @@ def get_segmentation_mask(
         c1 = max(int(c1 - margin), 0)
         c2 = min(int(c2 + margin), W - 1)
 
-        depth_crop = depth[r1 : r2 + 1, c1 : c2 + 1]
-        closest_pt = np.min(depth_crop)
-        if closest_pt > depth_max:
-            print(
-                "the closest pt in the crop is at",
-                closest_pt,
-                "while max allowed is at",
-                depth_max,
-            )
-            continue
+        if depth is not None:
+            depth_crop = depth[r1 : r2 + 1, c1 : c2 + 1]
+            closest_pt = np.min(depth_crop)
+            if closest_pt > depth_max:
+                print(
+                    "the closest pt in the crop is at",
+                    closest_pt,
+                    "while max allowed is at",
+                    depth_max,
+                )
+                continue
 
         masks, scores, logits = predictor.predict(box=bbs[j], multimask_output=False)
         mask = masks[0]
 
-        kerne_size = 10
+        # kerne_size = 10
+        kerne_size = 0
         mask = cv2.erode(
             np.copy(mask * 255).astype(np.uint8),
             kernel=np.ones((kerne_size, kerne_size), dtype=np.uint8),
@@ -188,13 +200,12 @@ def get_segmentation_mask(
 
         results.append(mask)
 
-        plt.figure(figsize=(10, 10))
-        plt.imshow(image)
-        show_mask(masks[0], plt.gca())
-        show_box(bbs[j], plt.gca())
-        plt.axis("off")
 
-        plt.savefig(sam_predictions_dir + f"/{prefix}_{j}.png")
+        show_mask(masks[0], plt.gca(), j, random_color=True)
+        show_box(bbs[j], plt.gca())
+    plt.axis("off")
+
+    plt.savefig(sam_predictions_dir + "/final.png")
 
     seg[seg < 0.5] = -1
 
@@ -336,6 +347,37 @@ class RealRobot(MyRobot):
 
         return obs
 
+    def custom_segment_labels_and_embeddings(
+        self, colors, depths, clip_, vocabulary="lvis", custom_vocabulary=""
+    ):
+        if clip_ is None:
+            clip_ = self.clip
+        pred_lst, names = get_detic_predictions(
+            colors, vocabulary=vocabulary, custom_vocabulary=custom_vocabulary
+        )
+
+        segs = []
+        image_embeddings = []
+
+        for idx, rgb in enumerate(colors):
+            print("Obtaining segmentation mask")
+            pred_boxes, pred_labels = get_bb_labels(pred_lst[idx], names)
+
+            seg, embedding_dict = get_segmentation_mask(
+                self.sam_predictor,
+                rgb,
+                None,
+                pred_boxes,
+                pred_labels,
+                prefix=idx,
+            )
+            embedding_dict = get_clip_embeddings(embedding_dict, clip_)
+
+            segs.append(seg)
+            image_embeddings.append(embedding_dict)
+
+        return segs, image_embeddings
+    
     def get_segment_labels_and_embeddings(
         self, colors, depths, clip_, vocabulary="lvis", custom_vocabulary=""
     ):
