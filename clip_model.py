@@ -9,31 +9,32 @@ class MyCLIP:
     def __init__(self, device=None, model_type="ViT-B/32"):
         # self.is_cuda = is_cuda
 
-        log_debug(f"The following models are available: {clip.available_models()}")
-        if not (model_type in clip.available_models()):
-            print(f"model_type {model_type} not available. Defaulting to ViT-B/32")
-            model_type = "ViT-B/32"
-        model, preprocess = clip.load("ViT-B/32")
+        # log_debug(f"The following models are available: {clip.available_models()}")
+        # if not (model_type in clip.available_models()):
+        #     print(f"model_type {model_type} not available. Defaulting to ViT-B/32")
+        #     model_type = "ViT-B/32"
+        # model, preprocess = clip.load("ViT-B/32")
 
-        if device is None:
-            self.device = "cuda" if torch.cuda.is_available() else "cpu"
-        else:
-            self.device = device
+        # if device is None:
+        #     self.device = "cuda" if torch.cuda.is_available() else "cpu"
+        # else:
+        #     self.device = device
 
-        log_debug(f"CLIP model running on {self.device}")
+        # log_debug(f"CLIP model running on {self.device}")
 
-        if self.device == "cuda":
-            self.model = model.cuda().eval()
+        # if self.device == "cuda":
+        #     self.model = model.cuda().eval()
 
-        else:
-            self.model = model.to(self.device).float().eval()
+        # else:
+        #     self.model = model.to(self.device).float().eval()
 
         self.bert_model = None
 
         # self.model = model.to(self.device).eval()
-        self.image_preprocess = preprocess
+        # self.image_preprocess = preprocess
 
     def get_image_embeddings(self, rgbs):
+        return np.zeros((len(rgbs), 3))
         images = []
         for r in rgbs:
             # print(r.shape, "image shape")
@@ -50,6 +51,8 @@ class MyCLIP:
         return image_features.cpu().numpy()
 
     def get_text_embeddings(self, texts):
+        return self.get_bert_embeddings(texts)
+    
         text_tokens = clip.tokenize(texts)
         if self.device == "cuda":
             text_tokens = text_tokens.cuda()

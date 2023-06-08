@@ -171,7 +171,6 @@ class MyRobot(Robot):
 
         if clip:
             from clip_model import MyCLIP
-
             self.clip = MyCLIP(device=device)
 
         if meshcat_viz:
@@ -585,8 +584,10 @@ class MyRobot(Robot):
                 # cv2.waitKey(0)
 
                 image_crops.append(crop)
-
+            # if clip_ is not None:
             embeddings = clip_.get_image_embeddings(image_crops)
+            # else:
+                # embeddings = np.zeros((len(unique_ids), 3))
             embedding_dict = {
                 unique_ids[idx]: {"embedding": embeddings[idx]}
                 for idx in range(len(unique_ids))
