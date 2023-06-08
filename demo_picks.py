@@ -174,7 +174,7 @@ def create_scene(robot):
 if __name__ == "__main__":
 
     robot = MyRobot(
-        gui=True, 
+        gui=False, 
         grasper=True, 
         clip=True, 
         meshcat_viz=True, 
@@ -220,15 +220,15 @@ if __name__ == "__main__":
                 count += 1
                 print(Fore.RED + "Pick Success")
 
-                cam = robot.cams[1]
-                rgb, _ = cam.get_images(get_rgb=True, get_depth=False, get_seg=False)
-                plt.imsave(f"pick_images/{total_count}.png", rgb.astype(np.uint8))
-
                 recept_id = robot.find(object_label=receptacle)
                 position = robot.get_place_position_new(obj_id, recept_id, "farther away")
                 
                 robot.place(obj_id, position, skip_update=True)
             
+                cam = robot.cams[1]
+                rgb, _ = cam.get_images(get_rgb=True, get_depth=False, get_seg=False)
+                plt.imsave(f"pick_images/{total_count}.png", rgb.astype(np.uint8))
+
             input("press enter to continue")
             robot.gripper.release()
             robot.remove_objects()

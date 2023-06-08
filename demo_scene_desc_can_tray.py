@@ -110,7 +110,8 @@ class ObjectsPick:
             ASSET_LOCATION + self.obj_urdf,
             # base_pos=[0.4, 0.28, 1.11],
             base_pos=[*(self.pos), self.pos_ht],
-            base_ori=random.choice(random_oris),
+            # base_ori=,
+            base_ori=R.from_euler("xyz", [np.pi/2, 0, random.choice(random_oris)]).as_quat(),
             scaling=self.scale,
             useFixedBase=False,
         )

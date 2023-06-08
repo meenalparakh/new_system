@@ -60,10 +60,12 @@ class ObjectsPick:
         self.pos = random_position
 
     def reset(self):
+        from IPython import embed
+        embed()
         obj_id = self.robot.pb_client.load_urdf(
             ASSET_LOCATION + self.obj_urdf,
             # base_pos=[0.4, 0.28, 1.11],
-            base_pos=[*(self.pos), self.pos_ht],
+            base_pos=np.array([*(self.pos), self.pos_ht]).copy(),
             base_ori=self.ori,
             scaling=self.scale,
             useFixedBase=False,
@@ -82,7 +84,7 @@ class ObjectsPick:
 if __name__ == "__main__":
 
     robot = MyRobot(
-        gui=True, 
+        gui=False, 
         grasper=True, 
         clip=True, 
         meshcat_viz=True, 
@@ -96,7 +98,6 @@ if __name__ == "__main__":
     lower = "mug"
     upper = "bowl"
     position = np.array([0.5, 0.3])
-
 
     num_lower = len(OBJECTS[lower]["urdfs"])
     num_upper = len(OBJECTS[upper]["urdfs"])
@@ -112,6 +113,10 @@ if __name__ == "__main__":
         robot.reset(ObjectsPick, upper, iu, position)
         for _ in range(500):
             robot.pb_client.stepSimulation()
+
+
+        # robot.remove_objects()
+        # continue
 
         object_dicts = robot.get_object_dicts()
         robot.scene_description = robot.get_scene_description(object_dicts)[0]
