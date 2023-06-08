@@ -900,7 +900,7 @@ class MyRobot(Robot):
 
         return pred_grasps, pred_success
 
-    def pick(self, obj_id, visualize=False, grasp_pose=None):
+    def pick(self, obj_id, visualize=False, grasp_pose=None, random=False):
         # self.obs_lst.append(self.get_obs())
         # self.arm.go_home()
         self.move_to_home()
@@ -921,9 +921,10 @@ class MyRobot(Robot):
                 print("Teleported in simulator")
                 return
 
-            # grasp_idx = random.choice(range(len(grasps)))
-
-            grasp_idx = np.argmax(pred_success)
+            if random:
+                grasp_idx = random.choice(range(len(pred_success)))
+            else:
+                grasp_idx = np.argmax(pred_success)
             grasp_pose = pred_grasps[grasp_idx]
 
         self.predicted_pose = (obj_id, grasp_pose)
@@ -1253,7 +1254,10 @@ class MyRobot(Robot):
         print("coordinates:", location)
         return location
 
-    def get_place_position(self, obj_id, place_description):
+    def get_place_position(self, *args, **kwargs):
+        return self.get_place_position_new(*args, **kwargs)
+
+    # def get_place_position(self, obj_id, place_description):
         place_locations = {}
 
         # get place positions lying above other objects
